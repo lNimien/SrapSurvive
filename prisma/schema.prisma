@@ -1,0 +1,286 @@
+// Prisma schema — Scrap & Survive MVP
+// Source of truth: docs/architecture.md §12
+// Conventions:
+//   - All IDs are cuid()
+//   - All timestamps use @default(now()) or @updatedAt
+//   - JSONB (Json) ONLY for immutable historical snapshots
+//   - CurrencyLedger is append-only — no UPDATE ever
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum RunStatus {
+  RUNNING
+  EXTRACTION_REQUESTED
+  EXTRACTED
+  FAILED
+  CANCELLED
+}
+
+enum ItemRarity {
+  COMMON
+  UNCOMMON
+  RARE
+  EPIC
+  LEGENDARY
+}
+
+enum LedgerEntryType {
+  INITIAL
+  EXTRACTION_REWARD
+  CATASTROPHE_PENALTY
+  PURCHASE
+  SALE
+  ADMIN_ADJUSTMENT
+}
+
+enum EquipmentSlot {
+  HEAD
+  BODY
+  HANDS
+  TOOL_PRIMARY
+  TOOL_SECONDARY
+  BACKPACK
+
+  @@map("EquipmentSlot_Enum")
+}
+
+// ─── Auth.js v5 required models ───────────────────────────────────────────────
+// Based on @auth/prisma-adapter requirements
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts Account[]
+  sessions Session[]
+
+  // Game relations
+  profile           UserProfile?
+  progression       UserProgression?
+  inventoryItems    InventoryItem[]
+  equipmentSlots    EquipmentSlot_[]
+  ledger            CurrencyLedger[]
+  activeRun         ActiveRun?
+  extractionResults ExtractionResult[]
+  auditLogs         AuditLog[]
+}
+
+model Account {
+  id                String   @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?  @db.Text
+  access_token      String?  @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?  @db.Text
+  session_state     String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ─── Game Models ──────────────────────────────────────────────────────────────
+
+/// Game-specific profile — separated from auth User to keep auth and game data decoupled.
+model UserProfile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  displayName String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// Item catalog — seeded at startup, never modified at runtime in MVP.
+/// In-memory ITEM_CATALOG in config/game.config.ts is the source of truth for MVP;
+/// this table exists for foreign key integrity and future DB-driven catalog in Fase 1+.
+model ItemDefinition {
+  id          String     @id @default(cuid())
+  internalKey String     @unique
+  displayName String
+  description String?
+  rarity      ItemRarity
+  baseValue   Int
+  stackable   Boolean    @default(true)
+  maxStack    Int        @default(999)
+  iconKey     String
+  metadata    Json? // JSONB: equipment stats, tags — never economy
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  inventoryItems InventoryItem[]
+
+  @@index([rarity])
+}
+
+/// Player inventory items — stacks of a single item type per user.
+model InventoryItem {
+  id               String   @id @default(cuid())
+  userId           String
+  itemDefinitionId String
+  quantity         Int      @default(1)
+  acquiredAt       DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  itemDefinition ItemDefinition @relation(fields: [itemDefinitionId], references: [id])
+
+  @@unique([userId, itemDefinitionId])
+  @@index([userId])
+}
+
+/// Equipment slots — one row per slot per user. itemDefinitionId null = empty slot.
+/// Renamed model to EquipmentSlot_ to avoid conflict with the enum EquipmentSlot.
+model EquipmentSlot_ {
+  id               String        @id @default(cuid())
+  userId           String
+  slot             EquipmentSlot
+  itemDefinitionId String? // null = empty slot
+  equippedAt       DateTime?
+  updatedAt        DateTime      @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, slot])
+  @@index([userId])
+  @@map("EquipmentSlot")
+}
+
+/// Active run — at most ONE per user (enforced by @unique on userId).
+/// Row is DELETED on resolution — see architecture.md §13 lifecycle note.
+/// Historical record lives in ExtractionResult.
+model ActiveRun {
+  id                  String    @id @default(cuid())
+  userId              String    @unique
+  status              RunStatus @default(RUNNING)
+  zoneId              String
+  startedAt           DateTime
+  equipmentSnapshot   Json // JSONB: immutable copy of equipment at run start
+  dangerConfig        Json // JSONB: zone params snapshotted at run start
+  dangerTriggeredAt   DateTime?
+  extractionRequestAt DateTime?
+  resolvedAt          DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+}
+
+/// Append-only ledger for credits. Never UPDATE. Never DELETE.
+/// balanceAfter is always computed inside the same transaction that creates the entry.
+model CurrencyLedger {
+  id           String          @id @default(cuid())
+  userId       String
+  amount       Int // Can be 0 for INITIAL; negative for future sinks
+  balanceAfter Int // Materialised balance — read this for current balance
+  entryType    LedgerEntryType
+  referenceId  String? // runId, purchaseId, etc.
+  createdAt    DateTime        @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([referenceId])
+}
+
+/// Resolved run record — permanent historical snapshot.
+model ExtractionResult {
+  id                  String    @id @default(cuid())
+  userId              String
+  runId               String // Original ActiveRun.id (already deleted when this is created)
+  zoneId              String
+  status              RunStatus // EXTRACTED or FAILED
+  startedAt           DateTime
+  resolvedAt          DateTime
+  durationSeconds     Int
+  dangerLevelAtClose  Float
+  catastropheOccurred Boolean
+  currencyEarned      Int
+  xpEarned            Int
+  lootSnapshot        Json // JSONB: array of { itemDefinitionId, quantity }
+  equipmentSnapshot   Json // JSONB: copy of equipment used in this run
+  createdAt           DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+/// Player progression — XP, level, lifetime stats.
+model UserProgression {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  currentXp             Int      @default(0)
+  currentLevel          Int      @default(1)
+  totalScrapCollected   Int      @default(0)
+  bestRunDurationSec    Int?
+  highestDangerSurvived Float?
+  updatedAt             DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// Audit log — append-only, immutable.
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String // "run.start", "run.extract", "inventory.equip"
+  payload   Json
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt(sort: Desc)])
+}
