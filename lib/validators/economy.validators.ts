@@ -6,3 +6,9 @@ export const SellItemsSchema = z.object({
 });
 
 export type SellItemsInput = z.infer<typeof SellItemsSchema>;
+
+export const BuyItemSchema = z.object({
+  itemDefinitionId: z.string().min(1, 'El ID del ítem es requerido.'),
+});
+
+export type BuyItemInput = z.infer<typeof BuyItemSchema>;

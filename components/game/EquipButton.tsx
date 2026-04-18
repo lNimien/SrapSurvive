@@ -3,6 +3,7 @@
 import { useTransition } from 'react';
 import { equipItemAction, unequipItemAction } from '../../server/actions/inventory.actions';
 import { EquipmentSlotKey } from '../../types/game.types';
+import { useToast } from '@/hooks/use-toast';
 
 interface EquipButtonProps {
   itemId: string;
@@ -12,6 +13,7 @@ interface EquipButtonProps {
 }
 
 export function EquipButton({ itemId, slot, isEquipped, isDisabled = false }: EquipButtonProps) {
+  const { toast } = useToast();
   const [isPending, startTransition] = useTransition();
   
   const visuallyDisabled = isPending || isDisabled;
@@ -26,9 +28,11 @@ export function EquipButton({ itemId, slot, isEquipped, isDisabled = false }: Eq
       const result = await action(input as any);
       
       if (!result.success) {
-        // En un proyecto completo usaríamos toast() de shadcn/ui.
-        // Como fallback usamos alert.
-        alert(`Error: ${result.error.message}`);
+        toast({
+          title: "Fallo en Equipamiento",
+          description: result.error.message,
+          variant: "destructive"
+        });
       }
     });
   };

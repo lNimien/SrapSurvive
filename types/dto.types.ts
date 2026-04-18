@@ -11,6 +11,8 @@ export type ErrorCode =
   | "RUN_ALREADY_ACTIVE" 
   | "RUN_NOT_RUNNING" 
   | "NOT_FOUND" 
+  | "INSUFFICIENT_FUNDS"
+  | "EXPIRED"
   | "INTERNAL_ERROR";
 
 export interface ActionError {
@@ -29,6 +31,14 @@ export interface PendingLootDTO {
   rarity: ItemRarityDTO;
 }
 
+export interface AnomalyDTO {
+  id: string;
+  type: string;
+  title: string;
+  description: string;
+  discoveredAt: string; // ISO
+}
+
 export interface RunStateDTO {
   status: "idle" | "running" | "catastrophe";
   runId?: string;
@@ -38,6 +48,7 @@ export interface RunStateDTO {
   catastropheThreshold?: number;
   pendingLoot?: PendingLootDTO[];
   elapsedSeconds?: number;
+  anomaly?: AnomalyDTO | null;
 }
 
 export interface RunStartedDTO {
@@ -97,6 +108,47 @@ export interface EquipmentDTO {
   BACKPACK: InventoryItemDTO | null;
 }
 
+/** Contrato diario para la UI */
+export interface UserContractDTO {
+  id: string;
+  requiredItemDefId: string;
+  requiredItemName: string;
+  requiredItemIcon: string;
+  requiredQuantity: number;
+  currentQuantity: number;
+  rewardCC: number;
+  rewardXP: number;
+  status: 'ACTIVE' | 'COMPLETED' | 'EXPIRED';
+  expiresAt: string; // ISO
+}
+
+export interface RecipeIngredientDTO {
+  itemDefId: string;
+  displayName: string;
+  iconKey: string;
+  rarity: ItemRarityDTO;
+  requiredQuantity: number;
+  currentQuantity: number;
+}
+
+export interface RecipeDTO {
+  id: string;
+  resultItem: {
+    id: string;
+    displayName: string;
+    description: string;
+    rarity: ItemRarityDTO;
+    iconKey: string;
+    equipmentSlot?: string;
+    configOptions?: any;
+  };
+  ingredients: RecipeIngredientDTO[];
+  costCC: number;
+  canAffordCC: boolean;
+  canAffordMaterials: boolean;
+}
+
+/** Estado completo del jugador para la dashboard */
 export interface PlayerStateDTO {
   userId: string;
   displayName: string;
@@ -106,4 +158,5 @@ export interface PlayerStateDTO {
   currencyBalance: number;
   equipment: EquipmentDTO;
   activeRun: RunStateDTO | null;
+  contracts: UserContractDTO[];
 }

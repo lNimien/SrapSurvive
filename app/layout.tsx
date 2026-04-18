@@ -23,13 +23,17 @@ export const metadata: Metadata = {
     'Idle Extraction RPG. Equipa a tu chatarrero, lanza expediciones automáticas y extrae antes de que ocurra la catástrofe.',
 };
 
+import { Toaster } from "@/components/ui/toaster";
+
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="es" className={cn(orbitron.variable, shareTechMono.variable, "font-sans", geist.variable)}>
-      <body>{children}</body>
-
+      <body className="antialiased min-h-screen">
+        {children}
+        <Toaster />
+      </body>
     </html>
   );
 }

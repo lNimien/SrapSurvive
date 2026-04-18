@@ -38,7 +38,14 @@ enum LedgerEntryType {
   CATASTROPHE_PENALTY
   PURCHASE
   SALE
+  CONTRACT_REWARD
   ADMIN_ADJUSTMENT
+}
+
+enum ContractStatus {
+  ACTIVE
+  COMPLETED
+  EXPIRED
 }
 
 enum EquipmentSlot {
@@ -75,6 +82,7 @@ model User {
   ledger            CurrencyLedger[]
   activeRun         ActiveRun?
   extractionResults ExtractionResult[]
+  userContracts     UserContract[]
   auditLogs         AuditLog[]
 }
 
@@ -283,4 +291,24 @@ model AuditLog {
   @@index([userId])
   @@index([action])
   @@index([createdAt(sort: Desc)])
+}
+
+/// Daily contracts for users — materials delivery quests.
+model UserContract {
+  id                String         @id @default(cuid())
+  userId            String
+  requiredItemDefId String
+  requiredQuantity  Int
+  currentQuantity   Int            @default(0)
+  rewardCC          Int
+  rewardXP          Int
+  expiresAt         DateTime
+  status            ContractStatus @default(ACTIVE)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
 }

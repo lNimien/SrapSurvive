@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { PackageSearch, Satellite, BarChart2, Store, LogOut, Terminal } from 'lucide-react';
-import { auth, signOut } from '../../server/auth/auth';
-import { Button } from '../ui/button';
+import { auth, signOut } from '@/server/auth/auth';
+import { Button, buttonVariants } from '../ui/button';
+import { cn } from '@/lib/utils';
 
 export async function GameSidebar() {
   const session = await auth();
@@ -24,37 +25,53 @@ export async function GameSidebar() {
       </div>
 
       <nav className="flex-1 py-6 flex flex-col gap-3 px-4">
-        <Button asChild variant="ghost" className="justify-start gap-4 h-12 w-full hover:bg-primary/10 hover:text-primary transition-all group relative overflow-hidden">
-          <Link href="/dashboard">
-            <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary scale-y-0 group-hover:scale-y-100 transition-transform origin-top" />
-            <Satellite className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
-            <span className="hidden md:inline font-sans uppercase tracking-widest font-semibold flex-1 text-left">Puente de Mando</span>
-          </Link>
-        </Button>
+        <Link 
+          href="/dashboard"
+          className={cn(
+            buttonVariants({ variant: "ghost" }),
+            "justify-start gap-4 h-12 w-full hover:bg-primary/10 hover:text-primary transition-all group relative overflow-hidden"
+          )}
+        >
+          <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary scale-y-0 group-hover:scale-y-100 transition-transform origin-top" />
+          <Satellite className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
+          <span className="hidden md:inline font-sans uppercase tracking-widest font-semibold flex-1 text-left">Puente de Mando</span>
+        </Link>
         
-        <Button asChild variant="ghost" className="justify-start gap-4 h-12 w-full hover:bg-green-500/10 hover:text-green-400 transition-all group relative overflow-hidden">
-          <Link href="/inventory">
-            <div className="absolute left-0 top-0 bottom-0 w-1 bg-green-500 scale-y-0 group-hover:scale-y-100 transition-transform origin-top" />
-            <PackageSearch className="w-5 h-5 text-muted-foreground group-hover:text-green-400 transition-colors" />
-            <span className="hidden md:inline font-sans uppercase tracking-widest font-semibold flex-1 text-left">Almacén</span>
-          </Link>
-        </Button>
+        <Link 
+          href="/inventory"
+          className={cn(
+            buttonVariants({ variant: "ghost" }),
+            "justify-start gap-4 h-12 w-full hover:bg-green-500/10 hover:text-green-400 transition-all group relative overflow-hidden"
+          )}
+        >
+          <div className="absolute left-0 top-0 bottom-0 w-1 bg-green-500 scale-y-0 group-hover:scale-y-100 transition-transform origin-top" />
+          <PackageSearch className="w-5 h-5 text-muted-foreground group-hover:text-green-400 transition-colors" />
+          <span className="hidden md:inline font-sans uppercase tracking-widest font-semibold flex-1 text-left">Almacén</span>
+        </Link>
 
-        <Button asChild variant="ghost" className="justify-start gap-4 h-12 w-full hover:bg-yellow-500/10 hover:text-yellow-400 transition-all group relative overflow-hidden">
-          <Link href="/market">
-            <div className="absolute left-0 top-0 bottom-0 w-1 bg-yellow-500 scale-y-0 group-hover:scale-y-100 transition-transform origin-top" />
-            <Store className="w-5 h-5 text-muted-foreground group-hover:text-yellow-400 transition-colors" />
-            <span className="hidden md:inline font-sans uppercase tracking-widest font-semibold flex-1 text-left">Mercado Negro</span>
-          </Link>
-        </Button>
+        <Link 
+          href="/market"
+          className={cn(
+            buttonVariants({ variant: "ghost" }),
+            "justify-start gap-4 h-12 w-full hover:bg-yellow-500/10 hover:text-yellow-400 transition-all group relative overflow-hidden"
+          )}
+        >
+          <div className="absolute left-0 top-0 bottom-0 w-1 bg-yellow-500 scale-y-0 group-hover:scale-y-100 transition-transform origin-top" />
+          <Store className="w-5 h-5 text-muted-foreground group-hover:text-yellow-400 transition-colors" />
+          <span className="hidden md:inline font-sans uppercase tracking-widest font-semibold flex-1 text-left">Mercado Negro</span>
+        </Link>
 
-        <Button asChild variant="ghost" className="justify-start gap-4 h-12 w-full hover:bg-purple-500/10 hover:text-purple-400 transition-all group relative overflow-hidden">
-          <Link href="/history">
-            <div className="absolute left-0 top-0 bottom-0 w-1 bg-purple-500 scale-y-0 group-hover:scale-y-100 transition-transform origin-top" />
-            <BarChart2 className="w-5 h-5 text-muted-foreground group-hover:text-purple-400 transition-colors" />
-            <span className="hidden md:inline font-sans uppercase tracking-widest font-semibold flex-1 text-left">Caja Negra</span>
-          </Link>
-        </Button>
+        <Link 
+          href="/history"
+          className={cn(
+            buttonVariants({ variant: "ghost" }),
+            "justify-start gap-4 h-12 w-full hover:bg-purple-500/10 hover:text-purple-400 transition-all group relative overflow-hidden"
+          )}
+        >
+          <div className="absolute left-0 top-0 bottom-0 w-1 bg-purple-500 scale-y-0 group-hover:scale-y-100 transition-transform origin-top" />
+          <BarChart2 className="w-5 h-5 text-muted-foreground group-hover:text-purple-400 transition-colors" />
+          <span className="hidden md:inline font-sans uppercase tracking-widest font-semibold flex-1 text-left">Caja Negra</span>
+        </Link>
       </nav>
 
       {session?.user && (

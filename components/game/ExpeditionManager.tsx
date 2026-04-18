@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { RunStateDTO, ExtractionResultDTO } from '../../types/dto.types';
 import { ExpeditionPanel } from './ExpeditionPanel';
 import { StartRunSection } from './StartRunSection';
@@ -11,21 +11,29 @@ interface ExpeditionManagerProps {
   activeRun: RunStateDTO | null;
 }
 
-/**
- * ExpeditionManager maintains the UI state of the expedition lifecycle.
- * It survives the unmounting of components that occur during RSC revalidation 
- * (e.g. when activeRun is deleted on the server, the Dashboard re-renders).
- */
 export function ExpeditionManager({ activeRun: serverActiveRun }: ExpeditionManagerProps) {
-  // Use local state to track results so they persist even if serverActiveRun becomes null
   const [extractionResult, setExtractionResult] = useState<ExtractionResultDTO | null>(null);
+
+  // Restore result from session storage on mount (survives revalidations)
+  useEffect(() => {
+    const saved = sessionStorage.getItem('ss_last_result');
+    if (saved) {
+      try {
+        setExtractionResult(JSON.parse(saved));
+      } catch (e) {
+        console.error('Failed to parse saved result', e);
+      }
+    }
+  }, []);
 
   const handleExtractionCompleted = (result: ExtractionResultDTO) => {
     setExtractionResult(result);
+    sessionStorage.setItem('ss_last_result', JSON.stringify(result));
   };
 
   const handleCloseModal = () => {
     setExtractionResult(null);
+    sessionStorage.removeItem('ss_last_result');
   };
 
   // If we have an active run from the server, we show the panel

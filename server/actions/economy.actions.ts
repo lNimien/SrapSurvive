@@ -5,11 +5,129 @@ import { z } from 'zod';
 import { db } from '../db/client';
 import { auth } from '../auth/auth';
 import { ITEM_CATALOG } from '../../config/game.config';
+import { VENDOR_CATALOG } from '../../config/vendor.config';
 import { ActionResult } from '../../types/api.types';
-import { SellItemsSchema, SellItemsInput } from '../../lib/validators/economy.validators';
+import { SellItemsSchema, SellItemsInput, BuyItemSchema, BuyItemInput } from '../../lib/validators/economy.validators';
 import { RunRepository } from '../repositories/run.repository';
+import { computeItemPrice } from '../domain/economy/market.calculator';
 
 // Assuming we want to return the amount earned.
+// ... (sellItemsAction code exists above)
+
+export async function buyItemAction(
+  input: BuyItemInput
+): Promise<ActionResult<{ itemDefinitionId: string }>> {
+  // 1. Validation
+  const validation = BuyItemSchema.safeParse(input);
+  if (!validation.success) {
+    return {
+      success: false,
+      error: { code: 'VALIDATION_ERROR', message: 'Datos de compra inválidos.' },
+    };
+  }
+
+  // 2. Auth checking
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) {
+    return {
+      success: false,
+      error: { code: 'UNAUTHORIZED', message: 'Debes iniciar sesión para comprar.' },
+    };
+  }
+
+  const { itemDefinitionId } = validation.data;
+
+  // 3. Verify the item exists in vendor catalog
+  const vendorEntry = VENDOR_CATALOG.find(v => v.itemDefinitionId === itemDefinitionId);
+  const itemDef = ITEM_CATALOG.find(i => i.id === itemDefinitionId);
+  
+  if (!vendorEntry || !itemDef) {
+    return {
+      success: false,
+      error: { code: 'VALIDATION_ERROR', message: 'El ítem no está disponible para compra.' },
+    };
+  }
+
+  const price = vendorEntry.priceCC;
+
+  try {
+    await db.$transaction(async (tx) => {
+      // Check balance
+      const latestLedger = await tx.currencyLedger.findFirst({
+        where: { userId },
+        orderBy: { createdAt: 'desc' },
+      });
+      const currentBalance = latestLedger?.balanceAfter || 0;
+
+      if (currentBalance < price) {
+        throw new Error('Créditos insuficientes para esta compra.');
+      }
+
+      // 1. Deduct credits
+      await tx.currencyLedger.create({
+        data: {
+          userId,
+          amount: -price,
+          balanceAfter: currentBalance - price,
+          entryType: 'PURCHASE',
+          referenceId: `buy_${itemDefinitionId}`,
+        },
+      });
+
+      // 2. Add to inventory
+      const existingInv = await tx.inventoryItem.findFirst({
+        where: { userId, itemDefinitionId },
+      });
+
+      if (existingInv) {
+        // Special case: if it's equipment and already has it, maybe we don't want duplicates? 
+        // In this game MVP, multiple equipment items are allowed in inventory, but only 1 equipped.
+        await tx.inventoryItem.update({
+          where: { id: existingInv.id },
+          data: { quantity: { increment: 1 }, acquiredAt: new Date() },
+        });
+      } else {
+        await tx.inventoryItem.create({
+          data: {
+            userId,
+            itemDefinitionId,
+            quantity: 1,
+            acquiredAt: new Date(),
+          },
+        });
+      }
+
+      // 3. Audit Log
+      await tx.auditLog.create({
+        data: {
+          userId,
+          action: 'inventory.buy',
+          payload: { itemDefinitionId, priceCC: price },
+        },
+      });
+    });
+
+    revalidatePath('/inventory');
+    revalidatePath('/market');
+    revalidatePath('/dashboard');
+
+    return { success: true, data: { itemDefinitionId } };
+  } catch (error: any) {
+    if (error.message === 'Créditos insuficientes para esta compra.') {
+      return {
+        success: false,
+        error: { code: 'INSUFFICIENT_FUNDS', message: error.message },
+      };
+    }
+
+    console.error('[buyItemAction] Error:', error);
+    return {
+      success: false,
+      error: { code: 'INTERNAL_ERROR', message: 'Ocurrió un error inesperado al realizar la compra.' },
+    };
+  }
+}
 export async function sellItemsAction(
   input: SellItemsInput
 ): Promise<ActionResult<{ creditsEarned: number }>> {
@@ -50,7 +168,10 @@ export async function sellItemsAction(
     };
   }
 
-  const creditsToEarn = itemDef.baseValue * amountToSell;
+  // Calculate dynamic price based on current date seed
+  const dateSeed = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  const currentPrice = computeItemPrice(itemDef.baseValue, dateSeed, itemDefinitionId);
+  const creditsToEarn = currentPrice * amountToSell;
 
   try {
     // We do atomic transactions to deduct from inventory and add to ledger.

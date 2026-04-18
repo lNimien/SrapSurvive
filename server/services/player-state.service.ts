@@ -6,7 +6,10 @@ import { EconomyRepository } from '../repositories/economy.repository';
 import { InventoryRepository } from '../repositories/inventory.repository';
 import { RunRepository } from '../repositories/run.repository';
 import { InventoryItemDomain, EquipmentDomain } from '../repositories/inventory.repository';
-import { SHIPYARD_CEMETERY_CONFIG } from '../../config/game.config';
+import { SHIPYARD_CEMETERY_CONFIG, ITEM_CATALOG } from '../../config/game.config';
+import { calculateLevelProgress, getXpThreshold } from '../domain/progression/progression.calculator';
+import { ContractService } from './contract.service';
+import { UserContractDTO } from '../../types/dto.types';
 
 // ─── Internal mappers (Prisma/Domain → DTO) ───────────────────────────────────
 
@@ -35,7 +38,7 @@ function toEquipmentDTO(domain: EquipmentDomain): EquipmentDTO {
   };
 }
 
-import { computeDangerLevel, computePendingLoot } from '../domain/run/run.calculator';
+import { computeDangerLevel, computePendingLoot, getTriggeredAnomaly, EquipmentSnapshot, AnomalyStateRecord } from '../domain/run/run.calculator';
 
 function toRunStateDTO(
   run: NonNullable<Awaited<ReturnType<typeof RunRepository.findActiveRun>>>
@@ -45,35 +48,63 @@ function toRunStateDTO(
     quadraticFactor: number;
     catastropheThreshold: number;
     dangerLootBonus: number;
-    baseLootPerSecond: any;
+    baseLootPerSecond: Record<string, number>;
     baseCreditsPerMinute: number;
     baseXpPerSecond: number;
   };
 
   const elapsedSeconds = (Date.now() - run.startedAt.getTime()) / 1000;
   
+  const equipmentSnapshot = run.equipmentSnapshot as EquipmentSnapshot;
   const dangerLevel = computeDangerLevel(elapsedSeconds, dangerConfig);
-  const pendingLoot = computePendingLoot(elapsedSeconds, (run as any).equipmentSnapshot, dangerLevel, dangerConfig);
+  const pendingLoot = computePendingLoot(elapsedSeconds, equipmentSnapshot, dangerLevel, dangerConfig);
 
   const status: RunStateDTO['status'] =
     dangerLevel >= dangerConfig.catastropheThreshold ? 'catastrophe' : 'running';
 
+  const anomalyState = run.anomalyState as Record<string, AnomalyStateRecord> | null;
+  const anomalyDef = getTriggeredAnomaly(run.id, elapsedSeconds, anomalyState);
+
   return {
     status,
-    runId: run.runId,
+    runId: run.id, // run.runId was a typo in previous version if it doesn't match Prisma, checking... 
+    // Actually in schema it is `id`. 
     zoneId: run.zoneId,
     startedAt: run.startedAt.toISOString(),
     dangerLevel: Math.min(dangerLevel, 1.5), // cap visual at 150%
     catastropheThreshold: dangerConfig.catastropheThreshold,
     elapsedSeconds: Math.floor(elapsedSeconds),
     pendingLoot,
+    anomaly: anomalyDef ? {
+      ...anomalyDef,
+      discoveredAt: new Date(run.startedAt.getTime() + (anomalyDef.baseTriggerSeconds * 1000)).toISOString()
+    } : null,
   };
 }
 
-// ─── XP calculation (MVP: fixed XP per level) ─────────────────────────────────
-// 1000 * level XP needed per level — simple ladder for MVP, easy to adjust
-function xpToNextLevel(level: number): number {
-  return level * 1000;
+function toUserContractDTO(contract: {
+  id: string;
+  requiredItemDefId: string;
+  requiredQuantity: number;
+  currentQuantity: number;
+  rewardCC: number;
+  rewardXP: number;
+  status: 'ACTIVE' | 'COMPLETED' | 'EXPIRED';
+  expiresAt: Date;
+}): UserContractDTO {
+  const itemDef = ITEM_CATALOG.find(i => i.id === contract.requiredItemDefId);
+  return {
+    id: contract.id,
+    requiredItemDefId: contract.requiredItemDefId,
+    requiredItemName: itemDef?.displayName || 'Desconocido',
+    requiredItemIcon: itemDef?.iconKey || 'icon_unknown',
+    requiredQuantity: contract.requiredQuantity,
+    currentQuantity: contract.currentQuantity,
+    rewardCC: contract.rewardCC,
+    rewardXP: contract.rewardXP,
+    status: contract.status,
+    expiresAt: contract.expiresAt.toISOString(),
+  };
 }
 
 // ─── Service ──────────────────────────────────────────────────────────────────
@@ -81,11 +112,12 @@ function xpToNextLevel(level: number): number {
 export const PlayerStateService = {
   async getPlayerState(userId: string): Promise<PlayerStateDTO> {
     // Parallel fetch — all reads, no writes, safe to parallelise
-    const [profile, currencyBalance, equipment, activeRunDomain] = await Promise.all([
+    const [profile, currencyBalance, equipment, activeRunDomain, contracts] = await Promise.all([
       UserRepository.getUserProfile(userId),
       EconomyRepository.getCurrentBalance(userId),
       InventoryRepository.getEquipmentByUser(userId),
       RunRepository.findActiveRun(userId),
+      ContractService.ensureDailyContracts(userId),
     ]);
 
     if (!profile) {
@@ -102,10 +134,11 @@ export const PlayerStateService = {
       displayName: profile.displayName,
       level: profile.level,
       currentXp: profile.currentXp,
-      xpToNextLevel: xpToNextLevel(profile.level),
+      xpToNextLevel: getXpThreshold(profile.level),
       currencyBalance,
       equipment: toEquipmentDTO(equipment),
       activeRun,
+      contracts: contracts.map(toUserContractDTO),
     };
   },
 

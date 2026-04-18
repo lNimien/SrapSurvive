@@ -30,6 +30,7 @@ export enum ItemCategory {
   EQUIPMENT = "EQUIPMENT",
   MATERIAL = "MATERIAL",
   RESOURCE = "RESOURCE",
+  CONSUMABLE = "CONSUMABLE",
 }
 
 // These interfaces match the Prisma models (assumed)
@@ -38,8 +39,8 @@ export interface ItemDefinition {
   id: string; // The internal key like "basic_work_helmet"
   displayName: string;
   description: string;
-  itemType: "EQUIPMENT" | "MATERIAL" | "RESOURCE";
-  rarity: "COMMON" | "UNCOMMON" | "RARE" | "EPIC" | "LEGENDARY" | "CORRUPTED";
+  itemType: ItemCategory;
+  rarity: ItemRarity;
   iconKey: string;
   baseValue: number;
   maxStack: number;
@@ -47,4 +48,29 @@ export interface ItemDefinition {
   // Specific to equipment
   equipmentSlot?: EquipmentSlotKey; // Use Enum for runtime
   configOptions?: any; // JSONB
+}
+
+export interface DangerConfig {
+  baseRate: number;
+  quadraticFactor: number;
+  catastropheThreshold: number;
+  dangerLootBonus: number;
+  baseLootPerSecond: Record<string, number>;
+  baseCreditsPerMinute: number;
+  baseXpPerSecond: number;
+}
+
+export interface ZoneDefinition {
+  id: string;
+  displayName: string;
+  description: string;
+  minLevel: number;
+  config: DangerConfig;
+}
+
+export interface Recipe {
+  id: string;
+  resultItemDefId: string;
+  requiredMaterials: { itemDefId: string; quantity: number }[];
+  costCC: number;
 }

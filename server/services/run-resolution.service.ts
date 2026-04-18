@@ -3,9 +3,10 @@ import { db } from '../db/client';
 import { RunRepository } from '../repositories/run.repository';
 import { InventoryRepository } from '../repositories/inventory.repository';
 import { DomainError } from '../domain/inventory/inventory.service';
-import { SHIPYARD_CEMETERY_CONFIG } from '../../config/game.config';
+import { SHIPYARD_CEMETERY_CONFIG, ID_EXTRACTION_INSURANCE } from '../../config/game.config';
 import { RunStartedDTO, ExtractionResultDTO, PendingLootDTO } from '../../types/dto.types';
-import { DangerConfig, EquipmentSnapshot } from '../domain/run/run.calculator';
+import { DangerConfig, EquipmentSnapshot, computePendingLoot, applyCatastrophePenalty, applyInsurancePenalty, computeCurrencyReward, computeXpReward } from '../domain/run/run.calculator';
+import { calculateLevelProgress } from '../domain/progression/progression.calculator';
 
 export const RunResolutionService = {
   async startRun(userId: string, zoneId: string): Promise<RunStartedDTO> {
@@ -78,7 +79,7 @@ export const RunResolutionService = {
   async resolveExtraction(userId: string, runId: string): Promise<ExtractionResultDTO> {
     const activeRun = await RunRepository.findActiveRun(userId);
     
-    // Safety checks as requested
+    // Safety checks
     if (!activeRun) {
       const existingHistory = await db.extractionResult.findFirst({
         where: { runId: runId }
@@ -96,29 +97,70 @@ export const RunResolutionService = {
     const { dangerConfig, equipmentSnapshot, startedAt } = (activeRun as any);
     const config = dangerConfig as DangerConfig;
     
-    // Extract logical variables out of the timestamp snapshot
     const elapsedSeconds = Math.floor((Date.now() - startedAt.getTime()) / 1000);
     const dangerLevel = config.baseRate + (config.quadraticFactor * elapsedSeconds * elapsedSeconds);
     const isCatastrophe = dangerLevel >= config.catastropheThreshold;
 
-    // Importing pure calculators internally scoped or implicitly attached within run.calculator.ts via PlayerState logic
-    const { computePendingLoot, applyCatastrophePenalty, computeCurrencyReward, computeXpReward } = require('../domain/run/run.calculator');
-    
     let pendingLoot = computePendingLoot(elapsedSeconds, equipmentSnapshot as EquipmentSnapshot, dangerLevel, config);
+    
+    // Add bonus loot from anomalies (forced items)
+    const bonusLootIds = (activeRun as any).bonusLoot as string[] | null;
+    if (bonusLootIds && bonusLootIds.length > 0) {
+      for (const itemDefId of bonusLootIds) {
+        const catalogItem = ITEM_CATALOG.find(i => i.id === itemDefId);
+        if (catalogItem) {
+          const existing = pendingLoot.find(l => l.itemId === itemDefId);
+          if (existing) {
+            existing.quantity += 1;
+          } else {
+            pendingLoot.push({
+              itemId: catalogItem.id,
+              displayName: catalogItem.displayName,
+              iconKey: catalogItem.iconKey,
+              quantity: 1,
+              rarity: catalogItem.rarity as any
+            });
+          }
+        }
+      }
+    }
+
     let finalLoot = pendingLoot;
     let currencyEarned = computeCurrencyReward(elapsedSeconds, dangerLevel, equipmentSnapshot as EquipmentSnapshot, config);
     let xpEarned = computeXpReward(elapsedSeconds, dangerLevel, config);
 
-    if (isCatastrophe) {
-       finalLoot = applyCatastrophePenalty(pendingLoot);
-       currencyEarned = 0;
-       xpEarned = Math.floor(xpEarned * 0.25);
-    }
-
-    // Atomic transaction across domains
+    // Atomic transaction
     const extractionResult = await db.$transaction(async (tx: any) => {
-       // Upsert items into inventory
-       for (const item of finalLoot) {
+        let insuranceUsed = false;
+        
+        if (isCatastrophe) {
+           // Check for insurance
+           const insurance = await tx.inventoryItem.findFirst({
+              where: { userId, itemDefinitionId: ID_EXTRACTION_INSURANCE, quantity: { gt: 0 } }
+           });
+
+           if (insurance) {
+              insuranceUsed = true;
+              finalLoot = applyInsurancePenalty(pendingLoot);
+              
+              // Consume 1 insurance
+              if (insurance.quantity === 1) {
+                 await tx.inventoryItem.delete({ where: { id: insurance.id } });
+              } else {
+                 await tx.inventoryItem.update({
+                    where: { id: insurance.id },
+                    data: { quantity: { decrement: 1 } }
+                 });
+              }
+           } else {
+              finalLoot = applyCatastrophePenalty(pendingLoot);
+           }
+           
+           currencyEarned = 0;
+           xpEarned = Math.floor(xpEarned * 0.25);
+        }
+
+        for (const item of finalLoot) {
           const existingInv = await tx.inventoryItem.findFirst({
              where: { userId, itemDefinitionId: item.itemId }
           });
@@ -140,13 +182,12 @@ export const RunResolutionService = {
           }
        }
 
-       // Economy ledger resolution
        const latestLedger = await tx.currencyLedger.findFirst({
           where: { userId }, orderBy: { createdAt: 'desc' }
        });
        const prevBalance = latestLedger?.balanceAfter || 0;
 
-       if (currencyEarned > 0) {
+       if (currencyEarned > 0 || isCatastrophe) {
           await tx.currencyLedger.create({
              data: {
                 userId,
@@ -158,21 +199,18 @@ export const RunResolutionService = {
           });
        }
 
-       // Core User progression logic
        const progression = await tx.userProgression.findUnique({
           where: { userId }
        });
        
        if (progression) {
-          let newXp = progression.currentXp + xpEarned;
-          let newLevel = progression.currentLevel;
+          const { newXp, newLevel } = calculateLevelProgress(
+             progression.currentXp,
+             progression.currentLevel,
+             xpEarned
+          );
+          
           const totalScrapRun = finalLoot.reduce((sum: number, item: any) => sum + item.quantity, 0);
-
-          // Leveling loop based on scaling formula: level * 1000
-          while (newXp >= newLevel * 1000) {
-             newXp -= newLevel * 1000;
-             newLevel += 1;
-          }
 
           await tx.userProgression.update({
              where: { userId },
@@ -186,7 +224,6 @@ export const RunResolutionService = {
           });
        }
 
-       // Append directly to the historic log bypassing the `ActiveRunStatus` directly deleting later
        const result = await tx.extractionResult.create({
           data: {
              runId: runId,
@@ -205,7 +242,6 @@ export const RunResolutionService = {
           }
        });
 
-       // 10. CLEANUP - Hard delete the physical pointer
        await tx.activeRun.delete({ where: { id: (activeRun as any).id } });
 
        await tx.auditLog.create({
@@ -221,7 +257,7 @@ export const RunResolutionService = {
 
     return {
        runId: extractionResult.runId,
-       status: extractionResult.status as "extracted" | "failed",
+       status: (extractionResult.status as string).toLowerCase() as any,
        durationSeconds: extractionResult.durationSeconds,
        dangerLevelAtClose: extractionResult.dangerLevelAtClose,
        catastropheOccurred: extractionResult.catastropheOccurred,
@@ -229,5 +265,59 @@ export const RunResolutionService = {
        currencyEarned: extractionResult.currencyEarned,
        xpEarned: extractionResult.xpEarned
     };
+  },
+
+  async resolveAnomaly(userId: string, runId: string, anomalyId: string, decision: 'IGNORE' | 'INVESTIGATE'): Promise<{ message: string }> {
+    const activeRun = await RunRepository.findActiveRun(userId);
+
+    if (!activeRun || activeRun.id !== runId) {
+      throw new DomainError('RUN_NOT_RUNNING', 'Expedición no encontrada o no válida.');
+    }
+
+    const currentAnomState = (activeRun.anomalyState || {}) as any;
+    
+    // Safety check: already resolved?
+    if (currentAnomState[anomalyId]?.resolved) {
+      throw new DomainError('VALIDATION_ERROR', 'Esta anomalía ya ha sido procesada.');
+    }
+
+    const updatedState = {
+      ...currentAnomState,
+      [anomalyId]: {
+        resolved: true,
+        decision,
+        resolvedAt: new Date().toISOString()
+      }
+    };
+
+    const updatedConfig = { ...(activeRun.dangerConfig as any) };
+    const bonusLoot = (activeRun.bonusLoot || []) as string[];
+
+    let message = "Anomalía ignorada satisfactoriamente.";
+
+    if (decision === 'INVESTIGATE') {
+      updatedConfig.baseRate += 0.20; // Massive danger spike
+      bonusLoot.push('corrupted_crystal'); // Uncommon reward
+      message = "Has obtenido un Cristal Corrupto, pero los escáneres están en rojo.";
+    }
+
+    await db.activeRun.update({
+      where: { id: runId },
+      data: {
+        anomalyState: updatedState,
+        dangerConfig: updatedConfig,
+        bonusLoot: bonusLoot
+      }
+    });
+
+    await db.auditLog.create({
+      data: {
+        userId,
+        action: 'run.anomaly_resolved',
+        payload: { runId, anomalyId, decision }
+      }
+    });
+
+    return { message };
   }
 };

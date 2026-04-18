@@ -1,4 +1,4 @@
-import { ItemDefinition, EquipmentSlotKey, ItemRarity, ItemCategory } from '../types/game.types';
+import { ItemDefinition, EquipmentSlotKey, ItemRarity, ItemCategory, Recipe } from '../types/game.types';
 
 export const SHIPYARD_CEMETERY_CONFIG = {
   internalKey: 'shipyard_cemetery',
@@ -20,8 +20,20 @@ export const SHIPYARD_CEMETERY_CONFIG = {
   baseXpPerSecond: 3.5,
 };
 
-// Catalogo inicial MVP (17 items)
+export const ID_EXTRACTION_INSURANCE = 'extraction_insurance';
+
+// Catalogo inicial MVP (18 items)
 export const ITEM_CATALOG: ItemDefinition[] = [
+  {
+    id: ID_EXTRACTION_INSURANCE,
+    displayName: "Seguro de Extracción",
+    description: "Un contrato digital que garantiza la recuperación del 80% del botín en caso de catástrofe catastrófica.",
+    itemType: ItemCategory.CONSUMABLE,
+    rarity: ItemRarity.RARE,
+    iconKey: "icon_extraction_insurance",
+    baseValue: 0, // No se vende de vuelta al mercado
+    maxStack: 10,
+  },
   // MATERIALES (10 items)
   {
     id: "scrap_metal",
@@ -208,5 +220,75 @@ export const ITEM_CATALOG: ItemDefinition[] = [
     maxStack: 1,
     equipmentSlot: EquipmentSlotKey.BACKPACK,
     configOptions: { backpackCapacity: 0.30 }
+  },
+  // HIGH-TIER CRAFTABLE EQUIPMENT (3 items)
+  {
+    id: "backpack_advanced_expedition",
+    displayName: "Mochila de Expedición Avanzada",
+    description: "Estructura de fibra de carbono con estabilizadores inerciales. Máxima capacidad.",
+    itemType: ItemCategory.EQUIPMENT,
+    rarity: ItemRarity.RARE,
+    iconKey: "icon_backpack_advanced",
+    baseValue: 350,
+    maxStack: 1,
+    equipmentSlot: EquipmentSlotKey.BACKPACK,
+    configOptions: { backpackCapacity: 0.60, dangerResistance: 0.05 }
+  },
+  {
+    id: "tool_nanofiber_precision",
+    displayName: "Multi-herramienta de Nanofibra",
+    description: "Corte por inducción molecular. Extrae hasta el último gramo de valor.",
+    itemType: ItemCategory.EQUIPMENT,
+    rarity: ItemRarity.EPIC,
+    iconKey: "icon_tool_precision",
+    baseValue: 800,
+    maxStack: 1,
+    equipmentSlot: EquipmentSlotKey.TOOL_PRIMARY,
+    configOptions: { lootMultiplier: 0.40, dangerResistance: -0.05 } // El ruido atrae peligro
+  },
+  {
+    id: "helmet_explorer_sensor",
+    displayName: "Casco de Sensor de Explorador",
+    description: "HUD integrado con escaneo térmico y detección de anomalías.",
+    itemType: ItemCategory.EQUIPMENT,
+    rarity: ItemRarity.RARE,
+    iconKey: "icon_helmet_explorer",
+    baseValue: 400,
+    maxStack: 1,
+    equipmentSlot: EquipmentSlotKey.HEAD,
+    configOptions: { dangerResistance: 0.15, anomalyDetectionBonus: 0.10 }
+  }
+];
+
+export const CRAFTING_RECIPES: Recipe[] = [
+  {
+    id: "recipe_backpack_advanced",
+    resultItemDefId: "backpack_advanced_expedition",
+    requiredMaterials: [
+      { itemDefId: "armor_fiber", quantity: 8 },
+      { itemDefId: "alien_resin", quantity: 3 },
+      { itemDefId: "recycled_component", quantity: 5 }
+    ],
+    costCC: 500
+  },
+  {
+    id: "recipe_tool_precision",
+    resultItemDefId: "tool_nanofiber_precision",
+    requiredMaterials: [
+      { itemDefId: "optic_sensor", quantity: 4 },
+      { itemDefId: "plasma_core", quantity: 2 },
+      { itemDefId: "energy_cell", quantity: 10 }
+    ],
+    costCC: 1500
+  },
+  {
+    id: "recipe_helmet_explorer",
+    resultItemDefId: "helmet_explorer_sensor",
+    requiredMaterials: [
+      { itemDefId: "optic_sensor", quantity: 5 },
+      { itemDefId: "recycled_component", quantity: 8 },
+      { itemDefId: "copper_wire", quantity: 15 }
+    ],
+    costCC: 800
   }
 ];

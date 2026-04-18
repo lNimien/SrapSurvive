@@ -17,3 +17,9 @@ export const UnequipItemSchema = z.object({
 });
 
 export type UnequipItemInput = z.infer<typeof UnequipItemSchema>;
+
+export const CraftItemSchema = z.object({
+  recipeId: z.string().min(1, 'El ID de la receta es requerido.'),
+});
+
+export type CraftItemInput = z.infer<typeof CraftItemSchema>;

@@ -7,6 +7,12 @@ import { LootPreview } from './LootPreview';
 import { ExtractButton } from './ExtractButton';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '../ui/card';
 import { Separator } from '../ui/separator';
+import { resolveAnomalyAction } from '@/server/actions/run.actions';
+import { useState } from 'react';
+import { useToast } from '@/hooks/use-toast';
+import { AlertTriangle, ShieldCheck, Zap } from 'lucide-react';
+import { Button } from '../ui/button';
+import { cn } from '@/lib/utils/cn';
 
 interface ExpeditionPanelProps {
   activeRun: RunStateDTO;
@@ -14,6 +20,7 @@ interface ExpeditionPanelProps {
 }
 
 export function ExpeditionPanel({ activeRun: initialActiveRun, onExtractionResult }: ExpeditionPanelProps) {
+  const { toast } = useToast();
   const polledRun = useRunPolling(initialActiveRun);
   const visualElapsed = useCountdown(polledRun.elapsedSeconds || 0, polledRun.status !== 'idle');
   const visualDanger = polledRun.dangerLevel || 0.0;
@@ -25,16 +32,90 @@ export function ExpeditionPanel({ activeRun: initialActiveRun, onExtractionResul
   };
 
   const isCatastrophe = polledRun.status === 'catastrophe';
+  const anomaly = polledRun.anomaly;
+  const [isResolving, setIsResolving] = useState(false);
+
+  const handleResolveAnomaly = async (decision: 'IGNORE' | 'INVESTIGATE') => {
+    if (!anomaly || !polledRun.runId) return;
+    
+    setIsResolving(true);
+    try {
+      const result = await resolveAnomalyAction({
+        runId: polledRun.runId,
+        anomalyId: anomaly.id,
+        decision
+      });
+
+      if (result.success) {
+        toast({ title: "Anomalía Resuelta", description: result.data.message });
+      } else {
+        toast({ title: "Error", description: result.error.message, variant: "destructive" });
+      }
+    } catch (e) {
+      toast({ title: "Error", description: "Error al procesar la anomalía.", variant: "destructive" });
+    } finally {
+      setIsResolving(false);
+    }
+  };
 
   return (
-    <Card className={`relative overflow-hidden transition-all duration-700 glass-panel border-2 ${
-      isCatastrophe 
-        ? 'border-destructive animate-pulse bg-destructive/10' 
-        : 'border-primary/30 bg-background/40'
-    } cyberpunk-box`}>
+    <Card className={cn(
+      "relative overflow-hidden transition-all duration-700 glass-panel border-2 cyberpunk-box",
+      isCatastrophe ? "border-destructive animate-pulse bg-destructive/10" : "border-primary/30 bg-background/40",
+      anomaly && "border-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.4)]"
+    )}>
       
       {/* HUD Scanline Effect */}
-      <div className="absolute inset-0 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.1)_50%),linear-gradient(90deg,rgba(255,0,0,0.02),rgba(0,255,0,0.01),rgba(0,0,255,0.02))] bg-[length:100%_2px,3px_100%] pointer-events-none z-20" />
+      <div className={cn(
+        "absolute inset-0 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.1)_50%),linear-gradient(90deg,rgba(255,0,0,0.02),rgba(0,255,0,0.01),rgba(0,0,255,0.02))] bg-[length:100%_2px,3px_100%] pointer-events-none z-20",
+        anomaly && "opacity-20 bg-purple-900/10"
+      )} />
+
+      {/* Anomaly Overlay */}
+      {anomaly && (
+        <div className="absolute inset-0 z-40 bg-background/80 backdrop-blur-md flex items-center justify-center p-6 animate-in fade-in zoom-in duration-500">
+           <div className="max-w-md w-full glass-panel border border-purple-500/50 p-6 space-y-6 relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-purple-500 to-transparent animate-pulse" />
+              
+              <div className="space-y-2 text-center">
+                 <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-purple-500/20 mb-2 border border-purple-500/30">
+                    <AlertTriangle className="w-6 h-6 text-purple-400" />
+                 </div>
+                 <h2 className="text-xl font-black text-purple-400 uppercase tracking-widest font-sans">
+                    {anomaly.title}
+                 </h2>
+                 <p className="text-sm font-mono text-primary/80 leading-relaxed">
+                    {anomaly.description}
+                 </p>
+              </div>
+
+              <div className="flex flex-col gap-3">
+                 <Button 
+                    className="w-full bg-purple-600 hover:bg-purple-700 text-white font-mono uppercase tracking-widest text-xs h-12 group relative"
+                    onClick={() => handleResolveAnomaly('INVESTIGATE')}
+                    disabled={isResolving}
+                 >
+                    <Zap className="w-4 h-4 mr-2 group-hover:animate-pulse" />
+                    Investigar Señal (+20% Peligro)
+                 </Button>
+                 
+                 <Button 
+                    variant="outline"
+                    className="w-full border-primary/20 hover:bg-primary/10 text-primary/60 font-mono uppercase tracking-widest text-[10px] h-10"
+                    onClick={() => handleResolveAnomaly('IGNORE')}
+                    disabled={isResolving}
+                 >
+                    <ShieldCheck className="w-3 h-3 mr-2" />
+                    Ignorar y Seguir Seguro
+                 </Button>
+              </div>
+
+              <div className="text-[9px] font-mono text-center opacity-30 uppercase tracking-tighter">
+                 Internal_Link_Error: Anomaly_Detection_System // Sector_{polledRun.zoneId?.toUpperCase()}
+              </div>
+           </div>
+        </div>
+      )}
 
       <CardHeader className="pb-2 relative z-10 px-6 pt-6">
         <div className="flex justify-between items-start">

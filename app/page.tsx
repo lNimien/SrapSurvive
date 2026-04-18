@@ -1,6 +1,6 @@
 import { auth, signIn } from '@/server/auth/auth';
 import { redirect } from 'next/navigation';
-import { cn } from '@/lib/utils/cn';
+import { cn } from '@/lib/utils';
 
 export const metadata = {
   title: 'Scrap & Survive — Acceso al Terminal',

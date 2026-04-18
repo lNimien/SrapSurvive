@@ -12,4 +12,10 @@ export const RequestExtractionInputSchema = z.object({
   runId: z.string().min(1, 'El runId es requerido para extraer.'),
 });
 
-export type RequestExtractionInput = z.infer<typeof RequestExtractionInputSchema>;
+export const ResolveAnomalyInputSchema = z.object({
+  runId: z.string().min(1),
+  anomalyId: z.string().min(1),
+  decision: z.enum(['IGNORE', 'INVESTIGATE']),
+});
+
+export type ResolveAnomalyInput = z.infer<typeof ResolveAnomalyInputSchema>;

@@ -3,11 +3,14 @@
 import { auth } from '../auth/auth';
 import { db } from '../db/client';
 import { revalidatePath } from 'next/cache';
-import { EquipItemSchema, UnequipItemSchema, EquipItemInput, UnequipItemInput } from '../../lib/validators/inventory.validators';
+import { EquipItemSchema, UnequipItemSchema, EquipItemInput, UnequipItemInput, CraftItemSchema, CraftItemInput } from '../../lib/validators/inventory.validators';
 import { InventoryService, DomainError } from '../domain/inventory/inventory.service';
 import { RunRepository } from '../repositories/run.repository';
 import { InventoryRepository } from '../repositories/inventory.repository';
-import { ActionResult, EquipmentDTO } from '../../types/dto.types';
+import { EconomyRepository } from '../repositories/economy.repository';
+import { ActionResult, EquipmentDTO, RecipeDTO } from '../../types/dto.types';
+import { CraftingService } from '../services/crafting.service';
+import { CRAFTING_RECIPES, ITEM_CATALOG } from '../../config/game.config';
 import { Prisma } from '@prisma/client';
 
 async function verifyActionPreconditions() {
@@ -146,6 +149,86 @@ export async function unequipItemAction(input: UnequipItemInput): Promise<Action
 
     return { success: true, data: undefined };
 
+  } catch (error) {
+    return handleActionError(error);
+  }
+}
+
+/**
+ * Returns available recipes with current eligibility for the user
+ */
+export async function getRecipesAction(): Promise<ActionResult<RecipeDTO[]>> {
+  try {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) return { success: true, data: [] }; // No recipes for guest
+
+    const [inventory, balance] = await Promise.all([
+      InventoryRepository.getInventoryByUser(userId),
+      EconomyRepository.getCurrentBalance(userId)
+    ]);
+
+    const recipeDTOs: RecipeDTO[] = CRAFTING_RECIPES.map(recipe => {
+      const resultDef = ITEM_CATALOG.find(i => i.id === recipe.resultItemDefId)!;
+      
+      const ingredients = recipe.requiredMaterials.map(req => {
+        const inv = inventory.find(i => i.itemDefinitionId === req.itemDefId);
+        const def = ITEM_CATALOG.find(i => i.id === req.itemDefId)!;
+        
+        return {
+          itemDefId: req.itemDefId,
+          displayName: def.displayName,
+          iconKey: def.iconKey,
+          rarity: def.rarity as any,
+          requiredQuantity: req.quantity,
+          currentQuantity: inv?.quantity || 0
+        };
+      });
+
+      const canAffordMaterials = ingredients.every(i => i.currentQuantity >= i.requiredQuantity);
+      const canAffordCC = balance >= recipe.costCC;
+
+      return {
+        id: recipe.id,
+        resultItem: {
+          id: resultDef.id,
+          displayName: resultDef.displayName,
+          description: resultDef.description,
+          rarity: resultDef.rarity as any,
+          iconKey: resultDef.iconKey,
+          equipmentSlot: resultDef.equipmentSlot,
+          configOptions: resultDef.configOptions
+        },
+        ingredients,
+        costCC: recipe.costCC,
+        canAffordCC,
+        canAffordMaterials
+      };
+    });
+
+    return { success: true, data: recipeDTOs };
+  } catch (error) {
+    return handleActionError(error);
+  }
+}
+
+/**
+ * Crafts an item using a recipe
+ */
+export async function craftItemAction(input: CraftItemInput): Promise<ActionResult<{ success: boolean }>> {
+  try {
+    const parsed = CraftItemSchema.parse(input);
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) throw new DomainError('UNAUTHORIZED', 'Usuario no autenticado.');
+
+    await CraftingService.craftItem(userId, parsed.recipeId);
+
+    revalidatePath('/inventory');
+    revalidatePath('/dashboard');
+    revalidatePath('/crafting');
+
+    return { success: true, data: { success: true } };
   } catch (error) {
     return handleActionError(error);
   }

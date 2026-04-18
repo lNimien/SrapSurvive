@@ -1,11 +1,12 @@
 import { redirect } from 'next/navigation';
-import { auth } from '../../../server/auth/auth';
-import { PlayerStateService } from '../../../server/services/player-state.service';
-import { ScrapperCard } from '../../../components/game/ScrapperCard';
-import { ResourceBar } from '../../../components/game/ResourceBar';
-import { EquipmentDisplay } from '../../../components/game/EquipmentDisplay';
-import { ExpeditionManager } from '../../../components/game/ExpeditionManager';
-import { Separator } from '../../../components/ui/separator';
+import { auth } from '@/server/auth/auth';
+import { PlayerStateService } from '@/server/services/player-state.service';
+import { ScrapperCard } from '@/components/game/ScrapperCard';
+import { ResourceBar } from '@/components/game/ResourceBar';
+import { EquipmentDisplay } from '@/components/game/EquipmentDisplay';
+import { ExpeditionManager } from '@/components/game/ExpeditionManager';
+import { ContractsPanel } from '@/components/game/ContractsPanel';
+import { Separator } from '@/components/ui/separator';
 
 export const metadata = {
   title: 'Dashboard — Scrap & Survive',
@@ -58,8 +59,10 @@ export default async function DashboardPage() {
         </aside>
 
         {/* Main area: expedition controls */}
-        <section className="lg:col-span-8 flex flex-col" aria-label="Control de expedición">
+        <section className="lg:col-span-8 flex flex-col gap-8" aria-label="Control de expedición">
           <ExpeditionManager activeRun={player.activeRun} />
+
+          <ContractsPanel contracts={player.contracts} />
         </section>
       </div>
     </main>
