@@ -17,6 +17,11 @@ export enum RunStatus {
   FAILED = "FAILED",
 }
 
+export enum RunMode {
+  SAFE = "SAFE",
+  HARD = "HARD",
+}
+
 export enum ItemRarity {
   COMMON = "COMMON",
   UNCOMMON = "UNCOMMON",

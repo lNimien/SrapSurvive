@@ -1,15 +1,28 @@
 import 'server-only';
-import { db } from '../db/client';
-import { PlayerStateDTO, InventoryItemDTO, EquipmentDTO, RunStateDTO } from '../../types/dto.types';
+import {
+  PlayerStateDTO,
+  InventoryItemDTO,
+  EquipmentDTO,
+  RunStateDTO,
+  BuildSynergyDTO,
+  WeeklyGoalsDTO,
+  PlayerAnalyticsDTO,
+} from '../../types/dto.types';
 import { UserRepository } from '../repositories/user.repository';
 import { EconomyRepository } from '../repositories/economy.repository';
 import { InventoryRepository } from '../repositories/inventory.repository';
 import { RunRepository } from '../repositories/run.repository';
 import { InventoryItemDomain, EquipmentDomain } from '../repositories/inventory.repository';
-import { SHIPYARD_CEMETERY_CONFIG, ITEM_CATALOG } from '../../config/game.config';
-import { calculateLevelProgress, getXpThreshold } from '../domain/progression/progression.calculator';
+import { ITEM_CATALOG } from '../../config/game.config';
+import { getXpThreshold } from '../domain/progression/progression.calculator';
 import { ContractService } from './contract.service';
 import { UserContractDTO } from '../../types/dto.types';
+import { AccountUpgradeService } from './account-upgrade.service';
+import { AchievementService } from './achievement.service';
+import { ProvisioningService } from './provisioning.service';
+import { WeeklyGoalsService } from './weekly-goals.service';
+import { PlayerAnalyticsService } from './player-analytics.service';
+import { featureFlags } from '@/config/feature-flags.config';
 
 // ─── Internal mappers (Prisma/Domain → DTO) ───────────────────────────────────
 
@@ -24,6 +37,8 @@ function toInventoryItemDTO(domain: InventoryItemDomain): InventoryItemDTO {
     quantity: domain.quantity,
     baseValue: domain.baseValue,
     isEquipable: domain.isEquipable,
+    equipmentSlot: domain.equipmentSlot,
+    configOptions: domain.configOptions,
   };
 }
 
@@ -38,7 +53,63 @@ function toEquipmentDTO(domain: EquipmentDomain): EquipmentDTO {
   };
 }
 
-import { computeDangerLevel, computePendingLoot, getTriggeredAnomaly, EquipmentSnapshot, AnomalyStateRecord } from '../domain/run/run.calculator';
+import {
+  computeDangerLevel,
+  computePendingLoot,
+  getTriggeredAnomaly,
+  EquipmentSnapshot,
+  AnomalyStateRecord,
+  resolveActiveBuildArchetype,
+  resolveActiveBuildSynergies,
+} from '../domain/run/run.calculator';
+import { RunMode } from '@/types/game.types';
+
+const EMPTY_WEEKLY_GOALS: WeeklyGoalsDTO = {
+  weekKey: 'disabled',
+  weekStart: new Date(0).toISOString(),
+  activeEvent: {
+    id: 'disabled',
+    title: 'LiveOps desactivado',
+    description: 'El panel de directivas semanales está deshabilitado por feature flag.',
+    startsAt: new Date(0).toISOString(),
+    endsAt: new Date(0).toISOString(),
+    eventModifierLabel: 'Sin overlay activo.',
+  },
+  directives: [],
+};
+
+const EMPTY_ANALYTICS: PlayerAnalyticsDTO = {
+  totalExtractions: 0,
+  successRate: 0,
+  averageCcPerExtraction: 0,
+  averageXpPerExtraction: 0,
+  runMix: {
+    safe: 0,
+    hard: 0,
+  },
+  bestZoneByEarnings: null,
+};
+
+function toEquipmentSnapshot(equipment: EquipmentDomain): EquipmentSnapshot {
+  return {
+    HEAD: equipment.HEAD?.itemDefinitionId ?? null,
+    BODY: equipment.BODY?.itemDefinitionId ?? null,
+    HANDS: equipment.HANDS?.itemDefinitionId ?? null,
+    TOOL_PRIMARY: equipment.TOOL_PRIMARY?.itemDefinitionId ?? null,
+    TOOL_SECONDARY: equipment.TOOL_SECONDARY?.itemDefinitionId ?? null,
+    BACKPACK: equipment.BACKPACK?.itemDefinitionId ?? null,
+  };
+}
+
+function toBuildSynergyDTO(input: ReturnType<typeof resolveActiveBuildSynergies>[number]): BuildSynergyDTO {
+  return {
+    id: input.id,
+    name: input.name,
+    description: input.description,
+    isArchetype: input.isArchetype,
+    effects: input.effects,
+  };
+}
 
 function toRunStateDTO(
   run: NonNullable<Awaited<ReturnType<typeof RunRepository.findActiveRun>>>
@@ -51,13 +122,15 @@ function toRunStateDTO(
     baseLootPerSecond: Record<string, number>;
     baseCreditsPerMinute: number;
     baseXpPerSecond: number;
+    runMode?: RunMode;
   };
 
+  const runMode = dangerConfig.runMode === RunMode.HARD ? RunMode.HARD : RunMode.SAFE;
   const elapsedSeconds = (Date.now() - run.startedAt.getTime()) / 1000;
   
   const equipmentSnapshot = run.equipmentSnapshot as EquipmentSnapshot;
   const dangerLevel = computeDangerLevel(elapsedSeconds, dangerConfig);
-  const pendingLoot = computePendingLoot(elapsedSeconds, equipmentSnapshot, dangerLevel, dangerConfig);
+  const pendingLoot = computePendingLoot(elapsedSeconds, equipmentSnapshot, dangerLevel, dangerConfig, runMode);
 
   const status: RunStateDTO['status'] =
     dangerLevel >= dangerConfig.catastropheThreshold ? 'catastrophe' : 'running';
@@ -67,6 +140,7 @@ function toRunStateDTO(
 
   return {
     status,
+    runMode,
     runId: run.id, // run.runId was a typo in previous version if it doesn't match Prisma, checking... 
     // Actually in schema it is `id`. 
     zoneId: run.zoneId,
@@ -111,13 +185,19 @@ function toUserContractDTO(contract: {
 
 export const PlayerStateService = {
   async getPlayerState(userId: string): Promise<PlayerStateDTO> {
+    // 0. Ensure user is provisioned (game profile, progression, equipo inicial)
+    // This handles broken sessions after DB resets/migrations.
+    await ProvisioningService.ensureProvisioned(userId);
+
     // Parallel fetch — all reads, no writes, safe to parallelise
-    const [profile, currencyBalance, equipment, activeRunDomain, contracts] = await Promise.all([
+    const [profile, currencyBalance, equipment, activeRunDomain, contracts, upgrades, achievements] = await Promise.all([
       UserRepository.getUserProfile(userId),
       EconomyRepository.getCurrentBalance(userId),
       InventoryRepository.getEquipmentByUser(userId),
       RunRepository.findActiveRun(userId),
       ContractService.ensureDailyContracts(userId),
+      AccountUpgradeService.getUpgradesForPlayer(userId),
+      AchievementService.getAchievementsForPlayer(userId),
     ]);
 
     if (!profile) {
@@ -129,6 +209,24 @@ export const PlayerStateService = {
       ? toRunStateDTO(activeRunDomain)
       : null;
 
+    const equipmentSnapshot = toEquipmentSnapshot(equipment);
+    const activeSynergies = featureFlags.d3BuildSynergies
+      ? resolveActiveBuildSynergies(equipmentSnapshot).map(toBuildSynergyDTO)
+      : [];
+    const activeArchetype = featureFlags.d3BuildSynergies
+      ? (() => {
+          const archetype = resolveActiveBuildArchetype(equipmentSnapshot);
+          return archetype ? toBuildSynergyDTO(archetype) : null;
+        })()
+      : null;
+
+    const [weeklyGoals, analytics] = await Promise.all([
+      featureFlags.d3WeeklyGoals ? WeeklyGoalsService.getWeeklyGoals(userId) : Promise.resolve(EMPTY_WEEKLY_GOALS),
+      featureFlags.d3PlayerAnalytics
+        ? PlayerAnalyticsService.getPlayerAnalytics(userId)
+        : Promise.resolve(EMPTY_ANALYTICS),
+    ]);
+
     return {
       userId,
       displayName: profile.displayName,
@@ -139,6 +237,12 @@ export const PlayerStateService = {
       equipment: toEquipmentDTO(equipment),
       activeRun,
       contracts: contracts.map(toUserContractDTO),
+      upgrades,
+      achievements,
+      activeSynergies,
+      activeArchetype,
+      weeklyGoals,
+      analytics,
     };
   },
 

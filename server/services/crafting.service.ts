@@ -49,7 +49,7 @@ export const CraftingService = {
           userId,
           amount: -recipe.costCC,
           balanceAfter: currentBalance - recipe.costCC,
-          entryType: 'CRAFTING_PAYMENT',
+          entryType: 'PURCHASE',
           referenceId: recipe.id
         }
       });

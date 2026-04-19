@@ -9,7 +9,7 @@ import { Separator } from '../../../components/ui/separator';
 import { ITEM_CATALOG } from '../../../config/game.config';
 import { VENDOR_CATALOG } from '../../../config/vendor.config';
 import Link from 'next/link';
-import { computeItemPrice } from '../../../server/domain/economy/market.calculator';
+import { computeSellUnitPrice } from '../../../server/domain/economy/market.calculator';
 
 export const metadata = {
   title: 'Mercado — Scrap & Survive',
@@ -37,15 +37,12 @@ export default async function MarketPage({ searchParams }: PageProps) {
 
   const isRunActive = playerState?.activeRun?.status === 'running' || playerState?.activeRun?.status === 'catastrophe';
   
-  // Date seed for deterministic prices
-  const dateSeed = new Date().toISOString().split('T')[0];
-
-  // Sell tab data with dynamic prices
+  // Sell tab data with dedicated sell formula (preview must match final ledger amount)
   const sellableItems = items
     .filter(i => !i.isEquipable && i.baseValue > 0)
     .map(item => ({
       ...item,
-      currentPrice: computeItemPrice(item.baseValue, dateSeed, item.itemDefinitionId)
+      currentPrice: computeSellUnitPrice(item.baseValue)
     }));
 
   // Buy tab data
@@ -64,7 +61,7 @@ export default async function MarketPage({ searchParams }: PageProps) {
             Mercado Negro
           </h1>
           <p className="font-mono text-sm text-primary/70 mt-1 pl-4 uppercase tracking-widest">
-            Comercio de Scrap // Tasa de Intercambio: Dinámica
+            Comercio de Scrap // Tasa de Reventa Controlada
           </p>
         </div>
         <div className="text-left md:text-right glass-panel px-6 py-3 ml-2 md:ml-0 inline-block">

@@ -1,5 +1,7 @@
 'use server';
 
+import 'server-only';
+
 import { auth } from '../auth/auth';
 import { revalidatePath } from 'next/cache';
 import { 
@@ -11,8 +13,10 @@ import {
   ResolveAnomalyInput 
 } from '../../lib/validators/run.validators';
 import { RunResolutionService } from '../services/run-resolution.service';
+import { guardMutationCategory } from '../services/mutation-guard.service';
 import { DomainError } from '../domain/inventory/inventory.service';
 import { ActionResult, RunStartedDTO, ExtractionResultDTO } from '../../types/dto.types';
+import { RunMode } from '../../types/game.types';
 
 export async function startRunAction(input: StartRunInput): Promise<ActionResult<RunStartedDTO>> {
   try {
@@ -27,7 +31,15 @@ export async function startRunAction(input: StartRunInput): Promise<ActionResult
       };
     }
 
-    const data = await RunResolutionService.startRun(userId, parsed.zoneId);
+    const mutationGuard = guardMutationCategory('extraction');
+    if (mutationGuard.blocked) {
+      return {
+        success: false,
+        error: mutationGuard.error,
+      };
+    }
+
+    const data = await RunResolutionService.startRun(userId, parsed.zoneId, parsed.runMode as RunMode);
 
     revalidatePath('/dashboard');
 
@@ -65,6 +77,14 @@ export async function requestExtractionAction(input: RequestExtractionInput): Pr
       return {
         success: false,
         error: { code: 'UNAUTHORIZED', message: 'Usuario no autenticado.' },
+      };
+    }
+
+    const mutationGuard = guardMutationCategory('extraction');
+    if (mutationGuard.blocked) {
+      return {
+        success: false,
+        error: mutationGuard.error,
       };
     }
 
@@ -108,6 +128,14 @@ export async function resolveAnomalyAction(input: ResolveAnomalyInput): Promise<
       return {
         success: false,
         error: { code: 'UNAUTHORIZED', message: 'Usuario no autenticado.' },
+      };
+    }
+
+    const mutationGuard = guardMutationCategory('extraction');
+    if (mutationGuard.blocked) {
+      return {
+        success: false,
+        error: mutationGuard.error,
       };
     }
 

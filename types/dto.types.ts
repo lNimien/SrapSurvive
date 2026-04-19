@@ -8,11 +8,15 @@ export type ActionResult<T> =
 export type ErrorCode = 
   | "UNAUTHORIZED" 
   | "VALIDATION_ERROR" 
+  | "FEATURE_DISABLED"
   | "RUN_ALREADY_ACTIVE" 
   | "RUN_NOT_RUNNING" 
+  | "RUN_ALREADY_RESOLVED"
   | "NOT_FOUND" 
+  | "INSUFFICIENT_BALANCE"
   | "INSUFFICIENT_FUNDS"
   | "EXPIRED"
+  | "TRANSACTION_FAILED"
   | "INTERNAL_ERROR";
 
 export interface ActionError {
@@ -22,6 +26,16 @@ export interface ActionError {
 }
 
 export type ItemRarityDTO = "COMMON" | "UNCOMMON" | "RARE" | "EPIC" | "LEGENDARY" | "CORRUPTED";
+export type RunModeDTO = 'SAFE' | 'HARD';
+
+export type ItemConfigOptionsDTO = {
+  dangerResistance?: number;
+  lootMultiplier?: number;
+  currencyMultiplier?: number;
+  xpMultiplier?: number;
+  backpackCapacity?: number;
+  anomalyDetectionBonus?: number;
+};
 
 export interface PendingLootDTO {
   itemId: string;
@@ -41,6 +55,7 @@ export interface AnomalyDTO {
 
 export interface RunStateDTO {
   status: "idle" | "running" | "catastrophe";
+  runMode?: RunModeDTO;
   runId?: string;
   zoneId?: string;
   startedAt?: string;
@@ -54,6 +69,7 @@ export interface RunStateDTO {
 export interface RunStartedDTO {
   runId: string;
   zoneId: string;
+  runMode: RunModeDTO;
   startedAt: string;
 }
 
@@ -97,6 +113,8 @@ export interface InventoryItemDTO {
   quantity: number;
   baseValue: number;
   isEquipable: boolean;
+  equipmentSlot?: string;
+  configOptions?: ItemConfigOptionsDTO;
 }
 
 export interface EquipmentDTO {
@@ -106,6 +124,130 @@ export interface EquipmentDTO {
   TOOL_PRIMARY: InventoryItemDTO | null;
   TOOL_SECONDARY: InventoryItemDTO | null;
   BACKPACK: InventoryItemDTO | null;
+}
+
+export interface BuildSynergyEffectDTO {
+  lootMultiplierBonus?: number;
+  currencyMultiplierBonus?: number;
+  xpMultiplierBonus?: number;
+  dangerResistanceBonus?: number;
+  dangerLootBonusBonus?: number;
+  catastropheThresholdBonus?: number;
+}
+
+export interface BuildSynergyDTO {
+  id: string;
+  name: string;
+  description: string;
+  isArchetype: boolean;
+  effects: BuildSynergyEffectDTO;
+}
+
+export interface LiveEventDTO {
+  id: string;
+  title: string;
+  description: string;
+  startsAt: string;
+  endsAt: string;
+  eventModifierLabel: string;
+}
+
+export interface WeeklyDirectiveDTO {
+  id: string;
+  title: string;
+  description: string;
+  progress: number;
+  target: number;
+  completed: boolean;
+  progressRatio: number;
+  status: 'IN_PROGRESS' | 'CLAIMABLE' | 'CLAIMED';
+  claimable: boolean;
+  claimed: boolean;
+  rewardCC: number;
+  rewardXP: number;
+  claimedAt: string | null;
+}
+
+export interface WeeklyGoalsDTO {
+  weekKey: string;
+  weekStart: string;
+  activeEvent: LiveEventDTO;
+  directives: WeeklyDirectiveDTO[];
+}
+
+export interface WeeklyDirectiveClaimResultDTO {
+  directiveKey: string;
+  weekStart: string;
+  rewardCC: number;
+  rewardXP: number;
+  newBalance: number;
+  newLevel: number;
+  currentXp: number;
+  alreadyClaimed: boolean;
+  claimedAt: string;
+}
+
+export interface PlayerAnalyticsDTO {
+  totalExtractions: number;
+  successRate: number;
+  averageCcPerExtraction: number;
+  averageXpPerExtraction: number;
+  runMix: {
+    safe: number;
+    hard: number;
+  };
+  bestZoneByEarnings: {
+    zoneId: string;
+    totalCredits: number;
+  } | null;
+}
+
+export interface AccountUpgradeEffectDTO {
+  baseRateMultiplier?: number;
+  quadraticFactorMultiplier?: number;
+  catastropheThresholdBonus?: number;
+  dangerLootBonusMultiplier?: number;
+}
+
+export interface AccountUpgradeDTO {
+  id: string;
+  displayName: string;
+  description: string;
+  costCC: number;
+  effects: AccountUpgradeEffectDTO;
+  purchased: boolean;
+  affordable: boolean;
+}
+
+export interface UpgradePurchaseResultDTO {
+  upgradeId: string;
+  newBalance: number;
+}
+
+export type AchievementTriggerDTO =
+  | { type: 'EXTRACTION_RESULTS_COUNT'; target: number }
+  | { type: 'CATASTROPHE_OCCURRED_COUNT'; target: number }
+  | { type: 'LEVEL_REACHED'; target: number }
+  | { type: 'TOTAL_SCRAP_COLLECTED'; target: number };
+
+export interface AchievementDTO {
+  id: string;
+  name: string;
+  description: string;
+  rewardCC: number;
+  rewardXP: number;
+  trigger: AchievementTriggerDTO;
+  unlocked: boolean;
+  claimed: boolean;
+}
+
+export interface AchievementClaimResultDTO {
+  achievementId: string;
+  rewardCC: number;
+  rewardXP: number;
+  newBalance: number;
+  newLevel: number;
+  currentXp: number;
 }
 
 /** Contrato diario para la UI */
@@ -140,7 +282,7 @@ export interface RecipeDTO {
     rarity: ItemRarityDTO;
     iconKey: string;
     equipmentSlot?: string;
-    configOptions?: any;
+    configOptions?: ItemConfigOptionsDTO | Record<string, unknown>;
   };
   ingredients: RecipeIngredientDTO[];
   costCC: number;
@@ -159,4 +301,10 @@ export interface PlayerStateDTO {
   equipment: EquipmentDTO;
   activeRun: RunStateDTO | null;
   contracts: UserContractDTO[];
+  upgrades: AccountUpgradeDTO[];
+  achievements: AchievementDTO[];
+  activeSynergies: BuildSynergyDTO[];
+  activeArchetype: BuildSynergyDTO | null;
+  weeklyGoals: WeeklyGoalsDTO;
+  analytics: PlayerAnalyticsDTO;
 }

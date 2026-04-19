@@ -1,15 +1,28 @@
 'use server';
 
+import 'server-only';
+
 import { auth } from '../auth/auth';
 import { db } from '../db/client';
 import { revalidatePath } from 'next/cache';
-import { EquipItemSchema, UnequipItemSchema, EquipItemInput, UnequipItemInput, CraftItemSchema, CraftItemInput } from '../../lib/validators/inventory.validators';
+import {
+  EquipItemSchema,
+  UnequipItemSchema,
+  EquipItemInput,
+  UnequipItemInput,
+  CraftItemSchema,
+  CraftItemInput,
+  SalvageItemSchema,
+  SalvageItemInput,
+} from '../../lib/validators/inventory.validators';
 import { InventoryService, DomainError } from '../domain/inventory/inventory.service';
 import { RunRepository } from '../repositories/run.repository';
 import { InventoryRepository } from '../repositories/inventory.repository';
 import { EconomyRepository } from '../repositories/economy.repository';
 import { ActionResult, EquipmentDTO, RecipeDTO } from '../../types/dto.types';
 import { CraftingService } from '../services/crafting.service';
+import { SalvageService } from '../services/salvage.service';
+import { guardMutationCategory } from '../services/mutation-guard.service';
 import { CRAFTING_RECIPES, ITEM_CATALOG } from '../../config/game.config';
 import { Prisma } from '@prisma/client';
 
@@ -222,6 +235,14 @@ export async function craftItemAction(input: CraftItemInput): Promise<ActionResu
     const userId = session?.user?.id;
     if (!userId) throw new DomainError('UNAUTHORIZED', 'Usuario no autenticado.');
 
+    const mutationGuard = guardMutationCategory('crafting');
+    if (mutationGuard.blocked) {
+      return {
+        success: false,
+        error: mutationGuard.error,
+      };
+    }
+
     await CraftingService.craftItem(userId, parsed.recipeId);
 
     revalidatePath('/inventory');
@@ -229,6 +250,45 @@ export async function craftItemAction(input: CraftItemInput): Promise<ActionResu
     revalidatePath('/crafting');
 
     return { success: true, data: { success: true } };
+  } catch (error) {
+    return handleActionError(error);
+  }
+}
+
+export async function salvageItemAction(
+  input: SalvageItemInput,
+): Promise<ActionResult<{ creditsEarned: number; newBalance: number }>> {
+  try {
+    const parsed = SalvageItemSchema.parse(input);
+    const session = await auth();
+    const userId = session?.user?.id;
+
+    if (!userId) {
+      throw new DomainError('UNAUTHORIZED', 'Usuario no autenticado.');
+    }
+
+    const mutationGuard = guardMutationCategory('crafting');
+    if (mutationGuard.blocked) {
+      return {
+        success: false,
+        error: mutationGuard.error,
+      };
+    }
+
+    const salvageResult = await SalvageService.salvageItem(
+      userId,
+      parsed.itemDefinitionId,
+      parsed.quantity,
+    );
+
+    revalidatePath('/inventory');
+    revalidatePath('/dashboard');
+    revalidatePath('/market');
+
+    return {
+      success: true,
+      data: salvageResult,
+    };
   } catch (error) {
     return handleActionError(error);
   }

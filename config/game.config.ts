@@ -1,8 +1,24 @@
 import { ItemDefinition, EquipmentSlotKey, ItemRarity, ItemCategory, Recipe } from '../types/game.types';
 
+export interface ZoneConfig {
+  internalKey: string;
+  displayName: string;
+  minLevel: number;
+  baseRate: number;
+  quadraticFactor: number;
+  catastropheThreshold: number;
+  spikeChance: number;
+  spikeMagnitude: number;
+  dangerLootBonus: number;
+  baseLootPerSecond: Record<string, number>;
+  baseCreditsPerMinute: number;
+  baseXpPerSecond: number;
+}
+
 export const SHIPYARD_CEMETERY_CONFIG = {
   internalKey: 'shipyard_cemetery',
   displayName: 'Cementerio de Naves',
+  minLevel: 1,
   baseRate: 0.04,
   quadraticFactor: 0.000004,
   catastropheThreshold: 0.90,
@@ -18,7 +34,89 @@ export const SHIPYARD_CEMETERY_CONFIG = {
   },
   baseCreditsPerMinute: 45,
   baseXpPerSecond: 3.5,
-};
+} as const satisfies ZoneConfig;
+
+export const ORBITAL_DERELICT_CONFIG = {
+  internalKey: 'orbital_derelict',
+  displayName: 'Derelict Orbital',
+  minLevel: 4,
+  baseRate: 0.06,
+  quadraticFactor: 0.000005,
+  catastropheThreshold: 0.92,
+  spikeChance: 0.03,
+  spikeMagnitude: 0.07,
+  dangerLootBonus: 0.95,
+  baseLootPerSecond: {
+    scrap_metal: 0.35,
+    energy_cell: 0.20,
+    recycled_component: 0.11,
+    corrupted_crystal: 0.04,
+    armor_fiber: 0.08,
+    alien_resin: 0.015,
+    optic_sensor: 0.012,
+    plasma_core: 0.0035,
+  },
+  baseCreditsPerMinute: 62,
+  baseXpPerSecond: 4.6,
+} as const satisfies ZoneConfig;
+
+export const ABYSSAL_FRACTURE_CONFIG = {
+  internalKey: 'abyssal_fracture',
+  displayName: 'Fisura Abisal',
+  minLevel: 8,
+  baseRate: 0.082,
+  quadraticFactor: 0.0000075,
+  catastropheThreshold: 0.935,
+  spikeChance: 0.045,
+  spikeMagnitude: 0.09,
+  dangerLootBonus: 1.2,
+  baseLootPerSecond: {
+    scrap_metal: 0.25,
+    energy_cell: 0.22,
+    recycled_component: 0.14,
+    corrupted_crystal: 0.08,
+    armor_fiber: 0.09,
+    alien_resin: 0.04,
+    optic_sensor: 0.03,
+    plasma_core: 0.012,
+    quantum_filament: 0.01,
+    void_alloy: 0.006,
+    entropy_shard: 0.0025,
+  },
+  baseCreditsPerMinute: 88,
+  baseXpPerSecond: 6.4,
+} as const satisfies ZoneConfig;
+
+export const ZONE_CONFIGS = [
+  SHIPYARD_CEMETERY_CONFIG,
+  ORBITAL_DERELICT_CONFIG,
+  ABYSSAL_FRACTURE_CONFIG,
+] as const;
+
+export const ZONE_CONFIG_BY_ID = ZONE_CONFIGS.reduce<Record<string, ZoneConfig>>((acc, zone) => {
+  acc[zone.internalKey] = zone;
+  return acc;
+}, {});
+
+export const AVAILABLE_ZONE_IDS = ZONE_CONFIGS.map((zone) => zone.internalKey);
+
+export function getZoneConfigById(zoneId: string): ZoneConfig | null {
+  return ZONE_CONFIG_BY_ID[zoneId] ?? null;
+}
+
+export function isRegisteredZone(zoneId: string): boolean {
+  return zoneId in ZONE_CONFIG_BY_ID;
+}
+
+export function isZoneUnlockedForLevel(zoneId: string, playerLevel: number): boolean {
+  const zone = getZoneConfigById(zoneId);
+  if (!zone) {
+    return false;
+  }
+
+  const normalizedLevel = Math.max(1, Math.floor(playerLevel));
+  return normalizedLevel >= zone.minLevel;
+}
 
 export const ID_EXTRACTION_INSURANCE = 'extraction_insurance';
 
@@ -134,6 +232,36 @@ export const ITEM_CATALOG: ItemDefinition[] = [
     iconKey: "icon_alien_resin",
     baseValue: 60,
     maxStack: 999,
+  },
+  {
+    id: "quantum_filament",
+    displayName: "Filamento Cuántico",
+    description: "Hebra superconductora extraída de bobinas de salto colapsadas.",
+    itemType: ItemCategory.MATERIAL,
+    rarity: ItemRarity.RARE,
+    iconKey: "icon_quantum_filament",
+    baseValue: 95,
+    maxStack: 999,
+  },
+  {
+    id: "void_alloy",
+    displayName: "Aleación de Vacío",
+    description: "Metal negro de compresión extrema, difícil de estabilizar.",
+    itemType: ItemCategory.MATERIAL,
+    rarity: ItemRarity.EPIC,
+    iconKey: "icon_void_alloy",
+    baseValue: 180,
+    maxStack: 199,
+  },
+  {
+    id: "entropy_shard",
+    displayName: "Esquirla Entrópica",
+    description: "Fragmento de singularidad encapsulada. Potencia brutal, manejo delicado.",
+    itemType: ItemCategory.MATERIAL,
+    rarity: ItemRarity.LEGENDARY,
+    iconKey: "icon_entropy_shard",
+    baseValue: 420,
+    maxStack: 49,
   },
 
   // EQUIPAMIENTO (7 items)
@@ -257,6 +385,102 @@ export const ITEM_CATALOG: ItemDefinition[] = [
     maxStack: 1,
     equipmentSlot: EquipmentSlotKey.HEAD,
     configOptions: { dangerResistance: 0.15, anomalyDetectionBonus: 0.10 }
+  },
+  {
+    id: "helmet_chronoguide_array",
+    displayName: "Array Cronoguía",
+    description: "Visor de predicción cinética con rutas de extracción en tiempo real.",
+    itemType: ItemCategory.EQUIPMENT,
+    rarity: ItemRarity.LEGENDARY,
+    iconKey: "icon_helmet_chronoguide",
+    baseValue: 1750,
+    maxStack: 1,
+    equipmentSlot: EquipmentSlotKey.HEAD,
+    configOptions: { dangerResistance: 0.2, xpMultiplier: 0.08 }
+  },
+  {
+    id: "suit_voidharden_shell",
+    displayName: "Armadura Voidharden",
+    description: "Capas reactivas que absorben fragmentación y sobrecarga térmica.",
+    itemType: ItemCategory.EQUIPMENT,
+    rarity: ItemRarity.LEGENDARY,
+    iconKey: "icon_suit_voidharden",
+    baseValue: 2300,
+    maxStack: 1,
+    equipmentSlot: EquipmentSlotKey.BODY,
+    configOptions: { dangerResistance: 0.24, xpMultiplier: 0.05 }
+  },
+  {
+    id: "tool_singularity_harvester",
+    displayName: "Recolector de Singularidad",
+    description: "Taladro de compresión gravitatoria para extraer núcleos intactos.",
+    itemType: ItemCategory.EQUIPMENT,
+    rarity: ItemRarity.LEGENDARY,
+    iconKey: "icon_tool_singularity",
+    baseValue: 2600,
+    maxStack: 1,
+    equipmentSlot: EquipmentSlotKey.TOOL_PRIMARY,
+    configOptions: { lootMultiplier: 0.48, dangerResistance: -0.04, xpMultiplier: 0.12 }
+  },
+  {
+    id: "backpack_event_horizon",
+    displayName: "Mochila Horizonte de Eventos",
+    description: "Módulo de compresión pseudoespacial para cargas de altísimo valor.",
+    itemType: ItemCategory.EQUIPMENT,
+    rarity: ItemRarity.LEGENDARY,
+    iconKey: "icon_backpack_event_horizon",
+    baseValue: 2150,
+    maxStack: 1,
+    equipmentSlot: EquipmentSlotKey.BACKPACK,
+    configOptions: { backpackCapacity: 0.85, dangerResistance: 0.08, xpMultiplier: 0.06 }
+  },
+  {
+    id: 'helmet_hazard_predictor',
+    displayName: 'Casco Predictor de Riesgo',
+    description: 'Matriz balística que anticipa microfracturas estructurales antes del colapso.',
+    itemType: ItemCategory.EQUIPMENT,
+    rarity: ItemRarity.EPIC,
+    iconKey: 'icon_helmet_hazard_predictor',
+    baseValue: 980,
+    maxStack: 1,
+    equipmentSlot: EquipmentSlotKey.HEAD,
+    configOptions: { dangerResistance: 0.17, xpMultiplier: 0.03 }
+  },
+  {
+    id: 'suit_reactive_bulkframe',
+    displayName: 'Armadura Bulkframe Reactiva',
+    description: 'Paneles de reacción secuencial para absorber impacto y redirigir calor.',
+    itemType: ItemCategory.EQUIPMENT,
+    rarity: ItemRarity.EPIC,
+    iconKey: 'icon_suit_bulkframe',
+    baseValue: 1220,
+    maxStack: 1,
+    equipmentSlot: EquipmentSlotKey.BODY,
+    configOptions: { dangerResistance: 0.2, currencyMultiplier: 0.06 }
+  },
+  {
+    id: 'gloves_flux_stabilizer',
+    displayName: 'Guantes Estabilizadores de Flujo',
+    description: 'Servomotores de ajuste fino para separar scrap valioso en zonas inestables.',
+    itemType: ItemCategory.EQUIPMENT,
+    rarity: ItemRarity.RARE,
+    iconKey: 'icon_gloves_flux',
+    baseValue: 540,
+    maxStack: 1,
+    equipmentSlot: EquipmentSlotKey.HANDS,
+    configOptions: { lootMultiplier: 0.2, dangerResistance: 0.04 }
+  },
+  {
+    id: 'tool_resonance_scanner',
+    displayName: 'Escáner de Resonancia',
+    description: 'Módulo secundario para identificar aleaciones complejas y rutas seguras de extracción.',
+    itemType: ItemCategory.EQUIPMENT,
+    rarity: ItemRarity.EPIC,
+    iconKey: 'icon_tool_resonance',
+    baseValue: 1100,
+    maxStack: 1,
+    equipmentSlot: EquipmentSlotKey.TOOL_SECONDARY,
+    configOptions: { lootMultiplier: 0.18, xpMultiplier: 0.07 }
   }
 ];
 
@@ -265,30 +489,118 @@ export const CRAFTING_RECIPES: Recipe[] = [
     id: "recipe_backpack_advanced",
     resultItemDefId: "backpack_advanced_expedition",
     requiredMaterials: [
-      { itemDefId: "armor_fiber", quantity: 8 },
-      { itemDefId: "alien_resin", quantity: 3 },
-      { itemDefId: "recycled_component", quantity: 5 }
+      { itemDefId: "armor_fiber", quantity: 4 },
+      { itemDefId: "alien_resin", quantity: 1 },
+      { itemDefId: "recycled_component", quantity: 3 }
     ],
-    costCC: 500
+    costCC: 520
   },
   {
     id: "recipe_tool_precision",
     resultItemDefId: "tool_nanofiber_precision",
     requiredMaterials: [
-      { itemDefId: "optic_sensor", quantity: 4 },
-      { itemDefId: "plasma_core", quantity: 2 },
-      { itemDefId: "energy_cell", quantity: 10 }
+      { itemDefId: "optic_sensor", quantity: 2 },
+      { itemDefId: "plasma_core", quantity: 1 },
+      { itemDefId: "energy_cell", quantity: 6 }
     ],
-    costCC: 1500
+    costCC: 1360
   },
   {
     id: "recipe_helmet_explorer",
     resultItemDefId: "helmet_explorer_sensor",
     requiredMaterials: [
-      { itemDefId: "optic_sensor", quantity: 5 },
-      { itemDefId: "recycled_component", quantity: 8 },
-      { itemDefId: "copper_wire", quantity: 15 }
+      { itemDefId: "optic_sensor", quantity: 2 },
+      { itemDefId: "recycled_component", quantity: 4 },
+      { itemDefId: "copper_wire", quantity: 8 }
     ],
-    costCC: 800
+    costCC: 860
+  },
+  {
+    id: "recipe_chronoguide_array",
+    resultItemDefId: "helmet_chronoguide_array",
+    requiredMaterials: [
+      { itemDefId: "optic_sensor", quantity: 3 },
+      { itemDefId: "quantum_filament", quantity: 2 },
+      { itemDefId: "void_alloy", quantity: 1 },
+      { itemDefId: "plasma_core", quantity: 1 }
+    ],
+    costCC: 2200
+  },
+  {
+    id: "recipe_voidharden_shell",
+    resultItemDefId: "suit_voidharden_shell",
+    requiredMaterials: [
+      { itemDefId: "armor_fiber", quantity: 8 },
+      { itemDefId: "alien_resin", quantity: 3 },
+      { itemDefId: "void_alloy", quantity: 2 },
+      { itemDefId: "entropy_shard", quantity: 1 }
+    ],
+    costCC: 2860
+  },
+  {
+    id: "recipe_singularity_harvester",
+    resultItemDefId: "tool_singularity_harvester",
+    requiredMaterials: [
+      { itemDefId: "plasma_core", quantity: 2 },
+      { itemDefId: "quantum_filament", quantity: 3 },
+      { itemDefId: "entropy_shard", quantity: 1 },
+      { itemDefId: "recycled_component", quantity: 6 }
+    ],
+    costCC: 3320
+  },
+  {
+    id: "recipe_event_horizon_backpack",
+    resultItemDefId: "backpack_event_horizon",
+    requiredMaterials: [
+      { itemDefId: "armor_fiber", quantity: 6 },
+      { itemDefId: "quantum_filament", quantity: 2 },
+      { itemDefId: "void_alloy", quantity: 2 },
+      { itemDefId: "alien_resin", quantity: 2 }
+    ],
+    costCC: 3040
+  },
+  {
+    id: 'recipe_hazard_predictor',
+    resultItemDefId: 'helmet_hazard_predictor',
+    requiredMaterials: [
+      { itemDefId: 'optic_sensor', quantity: 4 },
+      { itemDefId: 'quantum_filament', quantity: 2 },
+      { itemDefId: 'plasma_core', quantity: 1 },
+      { itemDefId: 'recycled_component', quantity: 8 }
+    ],
+    costCC: 2480
+  },
+  {
+    id: 'recipe_reactive_bulkframe',
+    resultItemDefId: 'suit_reactive_bulkframe',
+    requiredMaterials: [
+      { itemDefId: 'armor_fiber', quantity: 10 },
+      { itemDefId: 'void_alloy', quantity: 2 },
+      { itemDefId: 'alien_resin', quantity: 3 },
+      { itemDefId: 'plasma_core', quantity: 1 }
+    ],
+    costCC: 2960
+  },
+  {
+    id: 'recipe_flux_stabilizer_gloves',
+    resultItemDefId: 'gloves_flux_stabilizer',
+    requiredMaterials: [
+      { itemDefId: 'armor_fiber', quantity: 5 },
+      { itemDefId: 'energy_cell', quantity: 10 },
+      { itemDefId: 'optic_sensor', quantity: 2 },
+      { itemDefId: 'copper_wire', quantity: 12 }
+    ],
+    costCC: 1680
+  },
+  {
+    id: 'recipe_resonance_scanner',
+    resultItemDefId: 'tool_resonance_scanner',
+    requiredMaterials: [
+      { itemDefId: 'optic_sensor', quantity: 3 },
+      { itemDefId: 'quantum_filament', quantity: 3 },
+      { itemDefId: 'alien_resin', quantity: 2 },
+      { itemDefId: 'recycled_component', quantity: 10 }
+    ],
+    costCC: 2740
   }
 ];

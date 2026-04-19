@@ -4,61 +4,274 @@ import { DomainError } from '../domain/inventory/inventory.service';
 import { generateContractDraft } from '../domain/contract/contract.calculator';
 import { calculateLevelProgress } from '../domain/progression/progression.calculator';
 
+const DAILY_CONTRACT_COUNT = 3;
+const CONTRACT_REFRESH_COST_CC = 85;
+
+function getUtcDayRange(referenceDate: Date): { dayStart: Date; dayEnd: Date; dateSeed: string } {
+  const dayStart = new Date(Date.UTC(
+    referenceDate.getUTCFullYear(),
+    referenceDate.getUTCMonth(),
+    referenceDate.getUTCDate(),
+    0,
+    0,
+    0,
+    0
+  ));
+  const dayEnd = new Date(Date.UTC(
+    referenceDate.getUTCFullYear(),
+    referenceDate.getUTCMonth(),
+    referenceDate.getUTCDate(),
+    23,
+    59,
+    59,
+    999
+  ));
+
+  return {
+    dayStart,
+    dayEnd,
+    dateSeed: dayStart.toISOString().slice(0, 10),
+  };
+}
+
+async function getTodayContractsForUser(userId: string, dayStart: Date, dayEnd: Date) {
+  return db.userContract.findMany({
+    where: {
+      userId,
+      createdAt: {
+        gte: dayStart,
+        lte: dayEnd,
+      },
+      status: {
+        in: ['ACTIVE', 'COMPLETED'],
+      },
+    },
+    orderBy: { createdAt: 'asc' },
+  });
+}
+
+async function getPlayerLevelOrThrow(userId: string): Promise<number> {
+  const progression = await db.userProgression.findUnique({
+    where: { userId },
+    select: { currentLevel: true },
+  });
+
+  if (!progression) {
+    throw new DomainError('NOT_FOUND', 'No se encontró progresión para generar contratos.');
+  }
+
+  return progression.currentLevel;
+}
+
 export const ContractService = {
   /**
    * Ensures the user has 3 active contracts for the current day.
    */
   async ensureDailyContracts(userId: string) {
     const now = new Date();
-    
-    // 1. Get current active contracts
-    const activeContracts = await db.userContract.findMany({
-      where: { userId, status: 'ACTIVE' }
+    const { dayStart, dayEnd, dateSeed } = getUtcDayRange(now);
+
+    await db.userContract.updateMany({
+      where: { userId, status: 'ACTIVE', expiresAt: { lte: now } },
+      data: { status: 'EXPIRED' },
     });
 
-    // 2. Check if they are expired
-    const validContracts = activeContracts.filter(c => c.expiresAt > now);
-    
-    if (validContracts.length >= 3) {
-      return validContracts;
+    const [playerLevel, todaysContracts] = await Promise.all([
+      getPlayerLevelOrThrow(userId),
+      getTodayContractsForUser(userId, dayStart, dayEnd),
+    ]);
+
+    if (todaysContracts.length >= DAILY_CONTRACT_COUNT) {
+      return todaysContracts;
     }
 
-    // 3. Mark old ones as EXPIRED
-    if (activeContracts.length > validContracts.length) {
-      await db.userContract.updateMany({
-        where: { userId, status: 'ACTIVE', expiresAt: { lte: now } },
-        data: { status: 'EXPIRED' }
+    const contractsToGenerate = DAILY_CONTRACT_COUNT - todaysContracts.length;
+    const startIndex = todaysContracts.length;
+
+    const newContracts = Array.from({ length: contractsToGenerate }, (_, index) => {
+      const slotIndex = startIndex + index;
+      const draft = generateContractDraft(`${userId}-${dateSeed}-daily-${slotIndex}`, {
+        playerLevel,
       });
-    }
 
-    // 4. Generate new ones if needed
-    // Resets at 00:00 UTC
-    const expiresAt = new Date();
-    expiresAt.setUTCHours(23, 59, 59, 999);
-
-    const dateSeed = now.toISOString().split('T')[0]; // "YYYY-MM-DD"
-    
-    const newContracts = [];
-    // We create 3 distinct contracts by appending index to seed
-    for (let i = 0; i < 3; i++) {
-        const draft = generateContractDraft(`${userId}-${dateSeed}-${i}`);
-        newContracts.push({
-            userId,
-            requiredItemDefId: draft.requiredItemDefId,
-            requiredQuantity: draft.requiredQuantity,
-            rewardCC: draft.rewardCC,
-            rewardXP: draft.rewardXP,
-            expiresAt,
-            status: 'ACTIVE' as const
-        });
-    }
-
-    await db.userContract.createMany({
-        data: newContracts
+      return {
+        userId,
+        requiredItemDefId: draft.requiredItemDefId,
+        requiredQuantity: draft.requiredQuantity,
+        rewardCC: draft.rewardCC,
+        rewardXP: draft.rewardXP,
+        expiresAt: dayEnd,
+        status: 'ACTIVE' as const,
+      };
     });
 
-    return db.userContract.findMany({
-        where: { userId, status: 'ACTIVE' }
+    await db.userContract.createMany({ data: newContracts });
+
+    return getTodayContractsForUser(userId, dayStart, dayEnd);
+  },
+
+  async refreshContracts(userId: string, requestId?: string) {
+    const now = new Date();
+    const { dayStart, dayEnd, dateSeed } = getUtcDayRange(now);
+
+    return db.$transaction(async (tx) => {
+      if (requestId) {
+        const duplicatedRefresh = await tx.auditLog.findFirst({
+          where: {
+            userId,
+            action: 'contract.refresh',
+            createdAt: {
+              gte: dayStart,
+              lte: dayEnd,
+            },
+            payload: {
+              path: ['requestId'],
+              equals: requestId,
+            },
+          },
+          select: { id: true },
+        });
+
+        if (duplicatedRefresh) {
+          return tx.userContract.findMany({
+            where: {
+              userId,
+              createdAt: {
+                gte: dayStart,
+                lte: dayEnd,
+              },
+              status: {
+                in: ['ACTIVE', 'COMPLETED'],
+              },
+            },
+            orderBy: { createdAt: 'asc' },
+          });
+        }
+      }
+
+      await tx.userContract.updateMany({
+        where: { userId, status: 'ACTIVE', expiresAt: { lte: now } },
+        data: { status: 'EXPIRED' },
+      });
+
+      const [progression, latestLedgerEntry, refreshCountToday, todayContracts] = await Promise.all([
+        tx.userProgression.findUnique({ where: { userId }, select: { currentLevel: true } }),
+        tx.currencyLedger.findFirst({
+          where: { userId },
+          orderBy: { createdAt: 'desc' },
+          select: { balanceAfter: true },
+        }),
+        tx.auditLog.count({
+          where: {
+            userId,
+            action: 'contract.refresh',
+            createdAt: {
+              gte: dayStart,
+              lte: dayEnd,
+            },
+          },
+        }),
+        tx.userContract.findMany({
+          where: {
+            userId,
+            createdAt: {
+              gte: dayStart,
+              lte: dayEnd,
+            },
+            status: {
+              in: ['ACTIVE', 'COMPLETED'],
+            },
+          },
+          select: { status: true },
+        }),
+      ]);
+
+      if (!progression) {
+        throw new DomainError('NOT_FOUND', 'No se encontró progresión para refrescar contratos.');
+      }
+
+      const currentBalance = latestLedgerEntry?.balanceAfter ?? 0;
+      if (currentBalance < CONTRACT_REFRESH_COST_CC) {
+        throw new DomainError('INSUFFICIENT_BALANCE', 'No tienes créditos suficientes para refrescar contratos.');
+      }
+
+      const completedCount = todayContracts.filter((contract) => contract.status === 'COMPLETED').length;
+      const slotsToGenerate = Math.max(0, DAILY_CONTRACT_COUNT - completedCount);
+
+      await tx.userContract.updateMany({
+        where: {
+          userId,
+          createdAt: {
+            gte: dayStart,
+            lte: dayEnd,
+          },
+          status: 'ACTIVE',
+        },
+        data: { status: 'EXPIRED' },
+      });
+
+      const refreshIteration = refreshCountToday + 1;
+      const refreshReferenceId = `contract-refresh:${dateSeed}:${refreshIteration}`;
+
+      await tx.currencyLedger.create({
+        data: {
+          userId,
+          amount: -CONTRACT_REFRESH_COST_CC,
+          balanceAfter: currentBalance - CONTRACT_REFRESH_COST_CC,
+          entryType: 'PURCHASE',
+          referenceId: refreshReferenceId,
+        },
+      });
+
+      const contractsToCreate = Array.from({ length: slotsToGenerate }, (_, index) => {
+        const draft = generateContractDraft(`${userId}-${dateSeed}-refresh-${refreshIteration}-${index}`, {
+          playerLevel: progression.currentLevel,
+        });
+
+        return {
+          userId,
+          requiredItemDefId: draft.requiredItemDefId,
+          requiredQuantity: draft.requiredQuantity,
+          rewardCC: draft.rewardCC,
+          rewardXP: draft.rewardXP,
+          expiresAt: dayEnd,
+          status: 'ACTIVE' as const,
+        };
+      });
+
+      if (contractsToCreate.length > 0) {
+        await tx.userContract.createMany({ data: contractsToCreate });
+      }
+
+      await tx.auditLog.create({
+        data: {
+          userId,
+          action: 'contract.refresh',
+          payload: {
+            requestId: requestId ?? null,
+            refreshIteration,
+            refreshCostCC: CONTRACT_REFRESH_COST_CC,
+            slotsGenerated: contractsToCreate.length,
+            referenceId: refreshReferenceId,
+          },
+        },
+      });
+
+      return tx.userContract.findMany({
+        where: {
+          userId,
+          createdAt: {
+            gte: dayStart,
+            lte: dayEnd,
+          },
+          status: {
+            in: ['ACTIVE', 'COMPLETED'],
+          },
+        },
+        orderBy: { createdAt: 'asc' },
+      });
+    }, {
+      isolationLevel: 'Serializable',
     });
   },
 

@@ -6,7 +6,12 @@ import { ResourceBar } from '@/components/game/ResourceBar';
 import { EquipmentDisplay } from '@/components/game/EquipmentDisplay';
 import { ExpeditionManager } from '@/components/game/ExpeditionManager';
 import { ContractsPanel } from '@/components/game/ContractsPanel';
+import { UpgradesPanel } from '@/components/game/UpgradesPanel';
+import { AchievementsPanel } from '@/components/game/AchievementsPanel';
 import { Separator } from '@/components/ui/separator';
+import { featureFlags } from '@/config/feature-flags.config';
+import { WeeklyGoalsPanel } from '@/components/game/WeeklyGoalsPanel';
+import { PlayerAnalyticsPanel } from '@/components/game/PlayerAnalyticsPanel';
 
 export const metadata = {
   title: 'Dashboard — Scrap & Survive',
@@ -45,8 +50,21 @@ export default async function DashboardPage() {
       <Separator className="bg-primary/20 mb-8 w-[calc(100%-2rem)] mx-auto" />
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 px-2 lg:px-6 pb-12 w-full max-w-7xl mx-auto">
-        {/* Left column: player identity */}
-        <aside className="lg:col-span-4 lg:col-start-1 flex flex-col gap-6" aria-label="Perfil del chatarrero">
+        <section className="lg:col-span-12" aria-label="Control de expedición">
+          <ExpeditionManager activeRun={player.activeRun} playerLevel={player.level} />
+        </section>
+
+        <section className="lg:col-span-8 flex flex-col gap-6" aria-label="Contratos y progreso operativo">
+          <ContractsPanel contracts={player.contracts} />
+
+          {featureFlags.d3WeeklyGoals && <WeeklyGoalsPanel weeklyGoals={player.weeklyGoals} />}
+
+          {featureFlags.d3PlayerAnalytics && <PlayerAnalyticsPanel analytics={player.analytics} />}
+
+          <UpgradesPanel upgrades={player.upgrades} />
+        </section>
+
+        <aside className="lg:col-span-4 flex flex-col gap-6" aria-label="Perfil del chatarrero">
           <ScrapperCard
             player={{
               displayName: player.displayName,
@@ -55,15 +73,13 @@ export default async function DashboardPage() {
               xpToNextLevel: player.xpToNextLevel,
             }}
           />
-          <EquipmentDisplay equipment={player.equipment} />
+          <EquipmentDisplay
+            equipment={player.equipment}
+            activeSynergies={featureFlags.d3BuildSynergies ? player.activeSynergies : []}
+            activeArchetype={featureFlags.d3BuildSynergies ? player.activeArchetype : null}
+          />
+          <AchievementsPanel achievements={player.achievements} />
         </aside>
-
-        {/* Main area: expedition controls */}
-        <section className="lg:col-span-8 flex flex-col gap-8" aria-label="Control de expedición">
-          <ExpeditionManager activeRun={player.activeRun} />
-
-          <ContractsPanel contracts={player.contracts} />
-        </section>
       </div>
     </main>
   );

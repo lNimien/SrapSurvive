@@ -1,10 +1,10 @@
 import 'server-only';
 
-import { auth } from '@/server/actions/auth.actions';
+import { auth } from '@/server/auth/auth';
 import { redirect } from 'next/navigation';
 import { PlayerStateService } from '@/server/services/player-state.service';
 import { getRecipesAction } from '@/server/actions/inventory.actions';
-import { RecipeCard } from '@/components/game/RecipeCard';
+import { CraftingRecipeGrid } from '@/components/game/CraftingRecipeGrid';
 import { Hammer, Info } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
@@ -18,7 +18,7 @@ export default async function CraftingPage() {
   const userId = session?.user?.id;
 
   if (!userId) {
-    redirect('/login');
+    redirect('/');
   }
 
   const [playerState, recipesResult] = await Promise.all([
@@ -70,15 +70,7 @@ export default async function CraftingPage() {
         </Alert>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {recipes.map((recipe) => (
-          <RecipeCard 
-            key={recipe.id} 
-            recipe={recipe} 
-            isRunActive={isRunActive} 
-          />
-        ))}
-      </div>
+      <CraftingRecipeGrid recipes={recipes} isRunActive={isRunActive} />
 
       <footer className="mt-12 p-6 glass-panel border border-primary/10 rounded-lg bg-primary/2">
         <div className="flex items-start gap-4">

@@ -1,11 +1,13 @@
 import Link from 'next/link';
-import { PackageSearch, Satellite, BarChart2, Store, LogOut, Terminal } from 'lucide-react';
+import { PackageSearch, Satellite, BarChart2, Store, LogOut, Terminal, Hammer, Shield } from 'lucide-react';
 import { auth, signOut } from '@/server/auth/auth';
+import { isAdminUser } from '@/server/auth/admin';
 import { Button, buttonVariants } from '../ui/button';
 import { cn } from '@/lib/utils';
 
 export async function GameSidebar() {
   const session = await auth();
+  const shouldShowOpsLink = isAdminUser(session?.user?.id);
 
   return (
     <aside className="w-16 md:w-[280px] glass-panel border-r border-primary/20 flex flex-col h-screen overflow-y-auto relative z-50 shadow-[4px_0_24px_-10px_rgba(0,243,255,0.15)]">
@@ -50,6 +52,18 @@ export async function GameSidebar() {
         </Link>
 
         <Link 
+          href="/crafting"
+          className={cn(
+            buttonVariants({ variant: "ghost" }),
+            "justify-start gap-4 h-12 w-full hover:bg-orange-500/10 hover:text-orange-400 transition-all group relative overflow-hidden"
+          )}
+        >
+          <div className="absolute left-0 top-0 bottom-0 w-1 bg-orange-500 scale-y-0 group-hover:scale-y-100 transition-transform origin-top" />
+          <Hammer className="w-5 h-5 text-muted-foreground group-hover:text-orange-400 transition-colors" />
+          <span className="hidden md:inline font-sans uppercase tracking-widest font-semibold flex-1 text-left">Taller</span>
+        </Link>
+
+        <Link 
           href="/market"
           className={cn(
             buttonVariants({ variant: "ghost" }),
@@ -72,6 +86,20 @@ export async function GameSidebar() {
           <BarChart2 className="w-5 h-5 text-muted-foreground group-hover:text-purple-400 transition-colors" />
           <span className="hidden md:inline font-sans uppercase tracking-widest font-semibold flex-1 text-left">Caja Negra</span>
         </Link>
+
+        {shouldShowOpsLink && (
+          <Link
+            href="/ops"
+            className={cn(
+              buttonVariants({ variant: 'ghost' }),
+              'justify-start gap-4 h-12 w-full hover:bg-cyan-500/10 hover:text-cyan-300 transition-all group relative overflow-hidden'
+            )}
+          >
+            <div className="absolute left-0 top-0 bottom-0 w-1 bg-cyan-400 scale-y-0 group-hover:scale-y-100 transition-transform origin-top" />
+            <Shield className="w-5 h-5 text-muted-foreground group-hover:text-cyan-300 transition-colors" />
+            <span className="hidden md:inline font-sans uppercase tracking-widest font-semibold flex-1 text-left">Ops Internas</span>
+          </Link>
+        )}
       </nav>
 
       {session?.user && (

@@ -23,3 +23,13 @@ export const CraftItemSchema = z.object({
 });
 
 export type CraftItemInput = z.infer<typeof CraftItemSchema>;
+
+export const SalvageItemSchema = z.object({
+  itemDefinitionId: z.string().min(1, 'El ID del ítem es requerido.'),
+  quantity: z
+    .number()
+    .int('La cantidad a reciclar debe ser un entero.')
+    .min(1, 'La cantidad a reciclar debe ser al menos 1.'),
+});
+
+export type SalvageItemInput = z.infer<typeof SalvageItemSchema>;

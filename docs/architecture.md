@@ -30,6 +30,8 @@ La arquitectura está diseñada como:
 8. Cero duplicación de lógica de dominio entre cliente y servidor.
 9. Base de datos con índices correctos desde el principio.
 10. Tipado estricto end-to-end (TypeScript `strict: true`).
+11. Gate de progresión por zona (`minLevel`) validado siempre en servidor.
+12. Profundidad de build deterministic via configuración de equipo/rareza (sin cálculos autoritativos en cliente).
 
 ---
 
@@ -73,11 +75,12 @@ La arquitectura está diseñada como:
 Usuario autenticado
     │
     ▼
-Selecciona zona + equipo
+Selecciona zona + equipo (zona puede estar bloqueada por nivel)
     │
     ▼
 Server Action: startRun()
     ├── Valida que no hay RunActiva
+    ├── Valida que el nivel del usuario cumple `zone.minLevel`
     ├── Captura equipo y configuración de zona
     ├── Persiste ActiveRun con startedAt = now() del servidor
     └── Retorna RunStartedDTO al cliente
@@ -206,6 +209,24 @@ Estas reglas **nunca pueden violarse**. Si alguna se viola, es un bug crítico.
 8. **La resolución de catástrofe usa `startedAt` del servidor.** Ningún valor del cliente participa en el cálculo.
 9. **Los campos de economía son enteros.** Nunca floats sin control para cantidades de items o créditos.
 10. **Toda operación sobre un recurso verifica ownership** antes de actuar.
+11. **Las zonas con `minLevel` solo pueden iniciarse si `userProgression.currentLevel` cumple el gate.**
+12. **Los modificadores de build (loot/currency/xp) son determinísticos y tienen caps explícitos.**
+
+---
+
+## 7b. Estado de contenido D.1 + D.2 + D.3 low-churn (actual)
+
+- Zonas activas por config:
+  - `shipyard_cemetery` (minLevel 1)
+  - `orbital_derelict` (minLevel 4)
+  - `abyssal_fracture` (minLevel 8)
+- `startRun` aplica el gate por nivel en servicio de servidor antes de persistir `ActiveRun`.
+- `dangerConfig` sigue snapshotteado en `ActiveRun` al inicio (inmutable durante la run).
+- El modelo de resultado de equipo ahora incluye `xpMultiplier` (config de ítem + bonus por rareza), con límites explícitos en dominio.
+- D.2 activo: `runMode` SAFE/HARD snapshotteado en `dangerConfig` y aplicado en reward profile server-side.
+- D.3.1 activo: resolución de sinergias/arquetipo por configuración (`build-synergies.config.ts`) con caps explícitos aplicados en calculador de run.
+- D.3.2 activo (persistente): evento activo + directivas semanales con progreso persistido por semana y claim atómico/idempotente.
+- D.3.3 activo: analytics de jugador derivadas de `ExtractionResult` + `AuditLog(run.start)` para mix SAFE/HARD.
 
 ---
 
@@ -711,6 +732,12 @@ enum EquipmentSlot {
   TOOL_SECONDARY
   BACKPACK
 }
+
+enum WeeklyDirectiveStatus {
+  IN_PROGRESS
+  CLAIMABLE
+  CLAIMED
+}
 ```
 
 ### Modelos
@@ -883,6 +910,27 @@ createdAt DateTime @default(now())
 @@index([createdAt(sort: Desc)])
 ```
 
+#### `WeeklyDirectiveProgress`
+```
+id               String                @id @default(cuid())
+userId           String
+directiveKey     String
+weekStart        DateTime              // lunes UTC 00:00 para la semana activa
+target           Int
+progress         Int                   @default(0)
+status           WeeklyDirectiveStatus @default(IN_PROGRESS)
+rewardCC         Int
+rewardXP         Int
+claimedAt        DateTime?
+claimReferenceId String?
+createdAt        DateTime              @default(now())
+updatedAt        DateTime              @updatedAt
+
+@@unique([userId, directiveKey, weekStart])
+@@index([userId, weekStart])
+@@index([userId, weekStart, status])
+```
+
 ### Índices críticos
 
 | Tabla | Índice | Por qué |
@@ -894,6 +942,8 @@ createdAt DateTime @default(now())
 | `InventoryItem` | `userId` | Listar inventario |
 | `CurrencyLedger` | `(userId, createdAt DESC)` | Balance O(1) + historial |
 | `ExtractionResult` | `(userId, createdAt DESC)` | Historial de runs |
+| `WeeklyDirectiveProgress` | `(userId, directiveKey, weekStart)` unique | Unicidad por usuario/directiva/semana e idempotencia de claim |
+| `WeeklyDirectiveProgress` | `(userId, weekStart, status)` | Panel semanal por estado (`IN_PROGRESS/CLAIMABLE/CLAIMED`) |
 | `AuditLog` | `(userId, action, createdAt)` | Debugging |
 
 ---
@@ -912,6 +962,7 @@ Todo write path sigue el mismo patrón: **Client → Server Action → Applicati
 | `requestExtraction(runId)` | `run.actions` → `RunResolutionService` → `RunRepository` + `InventoryRepository` + `EconomyRepository` + `ExtractionResultRepository` + `UserProgressionRepository` + `AuditLogRepository` | Sí (compleja) |
 | `equipItem(slot, itemId)` | `inventory.actions` → `InventoryService` → `EquipmentSlotRepository` + `AuditLogRepository` | Sí |
 | `unequipItem(slot)` | `inventory.actions` → `InventoryService` → `EquipmentSlotRepository` + `AuditLogRepository` | Sí |
+| `claimWeeklyDirective(directiveKey, weekStart)` | `liveops.actions` → `WeeklyGoalsService` → `WeeklyDirectiveProgress` + `CurrencyLedger` + `UserProgression` + `AuditLog` | Sí |
 | Login (1er usuario) | `Auth.js signIn callback` → `UserRepository` + `UserProfileRepository` + `UserProgressionRepository` + `EconomyRepository` | Sí |
 
 **Regla:** ningún write path toca la DB sin pasar por un Repository. Ningún write path omite el AuditLog en acciones sensibles.
@@ -1411,3 +1462,16 @@ Estos términos tienen significado preciso en el dominio del juego. Usar siempre
 | **Zone** | Una expedición tiene una zona (`zoneId`) que define los parámetros de peligro y loot. En MVP solo existe una zona: `"shipyard_cemetery"`. La configuración de zona se snapshot en `ActiveRun.dangerConfig` al iniciar. |
 | **Player State** | El estado completo del jugador que incluye perfil, nivel, balance, equipo y run activa. Representado como `PlayerStateDTO` y ensamblado por `PlayerStateService`. |
 | **Scrapper** | El personaje del jugador — el chatarrero espacial. No tiene entidad propia en DB en MVP; sus stats se derivan de `UserProgression` + `EquipmentSlot`. |
+## Actualización D.2 — Run modes y economía de venta
+
+- `startRun` ahora acepta `runMode: SAFE | HARD` (SAFE por defecto).
+- El modo se persiste sin migración en `ActiveRun.dangerConfig.runMode` (snapshot autoritativo de servidor).
+- Cálculo de run usa perfiles determinísticos por modo:
+  - SAFE: menor loot/currency/xp y menor probabilidad efectiva de rarezas altas.
+  - HARD: mayor loot/currency/xp y mejor salida de materiales complejos.
+- En `resolveExtraction`, catástrofe en HARD ejecuta pérdida de equipo snapshotteado en la **misma transacción**:
+  1) decremento/eliminación de `InventoryItem` para piezas equipadas,
+  2) limpieza de `EquipmentSlot_`,
+  3) settlement de loot/ledger/result.
+- Catástrofe en SAFE mantiene equipo.
+- Mercado de venta usa fórmula dedicada `computeSellUnitPrice(baseValue)` (35% base, floor 1) para nerf global, y UI de mercado consume la misma función para mantener preview = ledger final.

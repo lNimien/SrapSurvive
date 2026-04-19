@@ -9,9 +9,10 @@ import { Card, CardContent } from '../ui/card';
 
 interface ExpeditionManagerProps {
   activeRun: RunStateDTO | null;
+  playerLevel: number;
 }
 
-export function ExpeditionManager({ activeRun: serverActiveRun }: ExpeditionManagerProps) {
+export function ExpeditionManager({ activeRun: serverActiveRun, playerLevel }: ExpeditionManagerProps) {
   const [extractionResult, setExtractionResult] = useState<ExtractionResultDTO | null>(null);
 
   // Restore result from session storage on mount (survives revalidations)
@@ -49,7 +50,7 @@ export function ExpeditionManager({ activeRun: serverActiveRun }: ExpeditionMana
   // If no active run, we show the start section but keeping the modal if a result was just produced
   return (
     <>
-      <StartRunSection hasActiveRun={false} />
+      <StartRunSection hasActiveRun={false} playerLevel={playerLevel} />
       
       <Card className="mt-6 glass-panel border-dashed border-primary/30 cyberpunk-box bg-primary/5">
         <CardContent className="p-8 text-center flex flex-col items-center justify-center gap-2">

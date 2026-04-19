@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { InventoryGrid } from '../../../components/game/InventoryGrid';
 import { InventoryRepository } from '../../../server/repositories/inventory.repository';
 import { Separator } from '../../../components/ui/separator';
+import { PlayerStateService } from '@/server/services/player-state.service';
 
 export const metadata = {
   title: 'Inventario — Scrap & Survive',
@@ -20,13 +21,15 @@ export default async function InventoryPage() {
   const [items, equipment, playerState] = await Promise.all([
     InventoryRepository.getInventoryByUser(userId),
     InventoryRepository.getEquipmentByUser(userId),
-    import('../../../server/services/player-state.service').then(m => m.PlayerStateService.getPlayerState(userId)),
+    PlayerStateService.getPlayerState(userId),
   ]);
 
   const isRunActive = playerState?.activeRun?.status === 'running' || playerState?.activeRun?.status === 'catastrophe';
 
   const equipableItems = items.filter(i => i.isEquipable);
   const materialItems = items.filter(i => !i.isEquipable);
+  const totalMaterialStacks = materialItems.length;
+  const totalEquipmentPieces = equipableItems.length;
 
   return (
     <main className="w-full h-full flex flex-col pt-4">
@@ -45,11 +48,35 @@ export default async function InventoryPage() {
 
       <Separator className="bg-primary/20 mb-8" />
 
+      <section className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6" aria-label="Resumen de almacenamiento">
+        <div className="border border-primary/20 bg-primary/5 p-3">
+          <p className="text-[10px] uppercase tracking-widest text-primary/70 font-mono">Stacks de materiales</p>
+          <p className="text-2xl font-mono text-primary">{totalMaterialStacks}</p>
+        </div>
+        <div className="border border-primary/20 bg-primary/5 p-3">
+          <p className="text-[10px] uppercase tracking-widest text-primary/70 font-mono">Piezas equipables</p>
+          <p className="text-2xl font-mono text-primary">{totalEquipmentPieces}</p>
+        </div>
+        <div className="border border-primary/20 bg-primary/5 p-3">
+          <p className="text-[10px] uppercase tracking-widest text-primary/70 font-mono">Contratos activos</p>
+          <p className="text-2xl font-mono text-primary">{playerState.contracts.length}</p>
+        </div>
+      </section>
+
       {isRunActive && (
         <div className="mb-6 p-4 bg-yellow-500/10 border-l-4 border-yellow-500 text-yellow-400 font-mono text-sm tracking-wide shadow-[0_0_15px_rgba(252,238,10,0.1)] cyberpunk-box">
           [!] ALERTA_SISTEMA: Expedición Activa. El equipo desplegado no puede ser alterado remotamente.
         </div>
       )}
+
+      <section className="mb-8 p-4 border border-primary/25 bg-primary/5 cyberpunk-box" aria-label="Guía rápida de materia prima">
+        <h2 className="font-sans text-sm font-bold uppercase tracking-widest text-primary">Materia Prima: Uso Táctico</h2>
+        <ul className="mt-3 space-y-2 text-xs font-mono text-primary/80 leading-relaxed">
+          <li>• Se usa para <span className="text-primary">fabricación</span> de equipo avanzado en el taller.</li>
+          <li>• También cuenta para <span className="text-primary">contratos</span> y puede venderse en el mercado.</li>
+          <li>• Tu <span className="text-primary">nivel</span> otorga bonos de extracción calculados en servidor (CC y XP).</li>
+        </ul>
+      </section>
 
       <section className="mb-12">
         <h2 className="text-xl font-bold font-sans text-primary mb-4 border-l-4 border-primary pl-3 uppercase tracking-widest bg-gradient-to-r from-primary/10 to-transparent py-1">Equipamiento Táctico</h2>

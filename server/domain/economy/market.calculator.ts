@@ -54,3 +54,12 @@ export function getPriceChangePercentage(
   if (baseValue <= 0) return 0;
   return Math.round(((currentPrice / baseValue) - 1) * 100);
 }
+
+/**
+ * Dedicated sell formula for the NPC market.
+ * Global nerf: players receive a conservative 35% of base value.
+ */
+export function computeSellUnitPrice(baseValue: number): number {
+  if (baseValue <= 0) return 0;
+  return Math.max(1, Math.floor(baseValue * 0.35));
+}

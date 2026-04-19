@@ -12,7 +12,6 @@ import { cn } from '@/lib/utils/cn';
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger,
 } from "../ui/tooltip";
 
@@ -70,26 +69,24 @@ export function RecipeCard({ recipe, isRunActive }: RecipeCardProps) {
                 <Badge variant="outline" className="text-[10px] py-0 font-mono border-primary/30 text-primary/70">
                   {recipe.resultItem.equipmentSlot || "CONSUMABLE"}
                 </Badge>
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger>
-                      <Info className="w-3 h-3 text-muted-foreground hover:text-primary transition-colors" />
-                    </TooltipTrigger>
-                    <TooltipContent className="glass-panel border-primary/30 p-2">
-                      <p className="text-xs font-mono max-w-[200px]">{recipe.resultItem.description}</p>
-                      {recipe.resultItem.configOptions && (
-                         <div className="mt-2 text-[10px] border-t border-primary/20 pt-1 text-primary/60">
-                            {Object.entries(recipe.resultItem.configOptions).map(([key, val]) => (
-                                <div key={key} className="flex justify-between gap-4">
-                                   <span>{key}:</span>
-                                   <span>{val}</span>
-                                </div>
-                            ))}
-                         </div>
-                      )}
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger>
+                    <Info className="w-3 h-3 text-muted-foreground hover:text-primary transition-colors" />
+                  </TooltipTrigger>
+                  <TooltipContent className="p-2 text-zinc-100">
+                    <p className="max-w-[220px] text-xs font-mono leading-relaxed text-zinc-100">{recipe.resultItem.description}</p>
+                    {recipe.resultItem.configOptions && (
+                       <div className="mt-2 border-t border-zinc-700 pt-1 text-[10px] text-zinc-300">
+                          {Object.entries(recipe.resultItem.configOptions).map(([key, val]) => (
+                              <div key={key} className="flex justify-between gap-4">
+                                 <span className="text-zinc-400">{key}:</span>
+                                 <span className="text-zinc-100">{String(val)}</span>
+                              </div>
+                          ))}
+                       </div>
+                    )}
+                  </TooltipContent>
+                </Tooltip>
               </div>
             </div>
           </div>

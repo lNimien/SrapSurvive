@@ -1,15 +1,18 @@
 'use server';
 
+import 'server-only';
+
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { db } from '../db/client';
 import { auth } from '../auth/auth';
 import { ITEM_CATALOG } from '../../config/game.config';
 import { VENDOR_CATALOG } from '../../config/vendor.config';
-import { ActionResult } from '../../types/api.types';
+import { ActionResult } from '../../types/dto.types';
 import { SellItemsSchema, SellItemsInput, BuyItemSchema, BuyItemInput } from '../../lib/validators/economy.validators';
 import { RunRepository } from '../repositories/run.repository';
-import { computeItemPrice } from '../domain/economy/market.calculator';
+import { computeItemPrice, computeSellUnitPrice } from '../domain/economy/market.calculator';
+import { guardMutationCategory } from '../services/mutation-guard.service';
 
 // Assuming we want to return the amount earned.
 // ... (sellItemsAction code exists above)
@@ -33,6 +36,14 @@ export async function buyItemAction(
     return {
       success: false,
       error: { code: 'UNAUTHORIZED', message: 'Debes iniciar sesión para comprar.' },
+    };
+  }
+
+  const mutationGuard = guardMutationCategory('market');
+  if (mutationGuard.blocked) {
+    return {
+      success: false,
+      error: mutationGuard.error,
     };
   }
 
@@ -150,6 +161,14 @@ export async function sellItemsAction(
     };
   }
 
+  const mutationGuard = guardMutationCategory('market');
+  if (mutationGuard.blocked) {
+    return {
+      success: false,
+      error: mutationGuard.error,
+    };
+  }
+
   const { itemDefinitionId, amountToSell } = validation.data;
 
   // Verify the item exists and can be sold.
@@ -168,10 +187,8 @@ export async function sellItemsAction(
     };
   }
 
-  // Calculate dynamic price based on current date seed
-  const dateSeed = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-  const currentPrice = computeItemPrice(itemDef.baseValue, dateSeed, itemDefinitionId);
-  const creditsToEarn = currentPrice * amountToSell;
+  const currentSellPrice = computeSellUnitPrice(itemDef.baseValue);
+  const creditsToEarn = currentSellPrice * amountToSell;
 
   try {
     // We do atomic transactions to deduct from inventory and add to ledger.

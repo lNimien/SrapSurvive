@@ -5,6 +5,7 @@ import { ITEM_CATALOG } from '../../config/game.config';
 import { EquipmentSlotKey } from '../../types/game.types';
 import { Card, CardContent, CardFooter } from '../ui/card';
 import { Badge } from '../ui/badge';
+import { SalvageButton } from './SalvageButton';
 
 interface InventorySlotProps {
   item: InventoryItemDTO;
@@ -56,7 +57,15 @@ export function InventorySlot({ item, isEquipped, isRunActive = false }: Invento
             isDisabled={isRunActive}
           />
         ) : (
-          <span className="text-[10px] font-mono text-muted-foreground/50 tracking-widest my-1">[ MATERIAL ]</span>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-mono text-muted-foreground/50 tracking-widest my-1">[ MATERIAL ]</span>
+            <SalvageButton
+              itemDefinitionId={item.itemDefinitionId}
+              quantityAvailable={item.quantity}
+              itemDisplayName={item.displayName}
+              isRunActive={isRunActive}
+            />
+          </div>
         )}
       </CardFooter>
     </Card>

@@ -3,21 +3,106 @@ import { db } from '../db/client';
 import { RunRepository } from '../repositories/run.repository';
 import { InventoryRepository } from '../repositories/inventory.repository';
 import { DomainError } from '../domain/inventory/inventory.service';
-import { SHIPYARD_CEMETERY_CONFIG, ID_EXTRACTION_INSURANCE } from '../../config/game.config';
+import { getZoneConfigById, ID_EXTRACTION_INSURANCE, isZoneUnlockedForLevel, ITEM_CATALOG } from '../../config/game.config';
 import { RunStartedDTO, ExtractionResultDTO, PendingLootDTO } from '../../types/dto.types';
-import { DangerConfig, EquipmentSnapshot, computePendingLoot, applyCatastrophePenalty, applyInsurancePenalty, computeCurrencyReward, computeXpReward } from '../domain/run/run.calculator';
+import {
+  DangerConfig,
+  EquipmentSnapshot,
+  applyCatastrophePenalty,
+  applyEquipmentToDangerConfig,
+  applyInsurancePenalty,
+  computeCurrencyReward,
+  computePendingLoot,
+  computeXpReward,
+  resolveRunMode,
+} from '../domain/run/run.calculator';
 import { calculateLevelProgress } from '../domain/progression/progression.calculator';
+import { computeLevelRewardBonus } from '../domain/progression/reward-bonus.logic';
+import { AccountUpgradeService } from './account-upgrade.service';
+import { RunMode } from '../../types/game.types';
+
+type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
+
+async function applyHardModeCatastropheGearLoss(
+  tx: TxClient,
+  userId: string,
+  equipmentSnapshot: EquipmentSnapshot,
+): Promise<void> {
+  const slotKeys: Array<'HEAD' | 'BODY' | 'HANDS' | 'TOOL_PRIMARY' | 'TOOL_SECONDARY' | 'BACKPACK'> = [
+    'HEAD',
+    'BODY',
+    'HANDS',
+    'TOOL_PRIMARY',
+    'TOOL_SECONDARY',
+    'BACKPACK',
+  ];
+
+  const equipCounts = Object.values(equipmentSnapshot)
+    .filter((itemDefId): itemDefId is string => Boolean(itemDefId))
+    .reduce<Record<string, number>>((acc, itemDefId) => {
+      acc[itemDefId] = (acc[itemDefId] ?? 0) + 1;
+      return acc;
+    }, {});
+
+  for (const [itemDefinitionId, equippedCopies] of Object.entries(equipCounts)) {
+    const inventoryRow = await tx.inventoryItem.findUnique({
+      where: { userId_itemDefinitionId: { userId, itemDefinitionId } },
+    });
+
+    if (!inventoryRow) {
+      continue;
+    }
+
+    if (inventoryRow.quantity <= equippedCopies) {
+      await tx.inventoryItem.delete({ where: { id: inventoryRow.id } });
+    } else {
+      await tx.inventoryItem.update({
+        where: { id: inventoryRow.id },
+        data: { quantity: { decrement: equippedCopies } },
+      });
+    }
+  }
+
+  for (const slotKey of slotKeys) {
+    const itemDefId = equipmentSnapshot[slotKey];
+    if (!itemDefId) {
+      continue;
+    }
+
+    await tx.equipmentSlot_.updateMany({
+      where: { userId, slot: slotKey },
+      data: { itemDefinitionId: null, equippedAt: null },
+    });
+  }
+}
 
 export const RunResolutionService = {
-  async startRun(userId: string, zoneId: string): Promise<RunStartedDTO> {
+  async startRun(userId: string, zoneId: string, runMode: RunMode = RunMode.SAFE): Promise<RunStartedDTO> {
     // 1. Ensure no active run
     const activeRun = await RunRepository.findActiveRun(userId);
     if (activeRun) {
       throw new DomainError('RUN_ALREADY_ACTIVE', 'Ya tienes una expedición en curso.');
     }
 
-    if (zoneId !== SHIPYARD_CEMETERY_CONFIG.internalKey) {
+    const selectedZoneConfig = getZoneConfigById(zoneId);
+    if (!selectedZoneConfig) {
       throw new DomainError('VALIDATION_ERROR', 'Zona no disponible.');
+    }
+
+    const progression = await db.userProgression.findUnique({
+      where: { userId },
+      select: { currentLevel: true },
+    });
+
+    if (!progression) {
+      throw new DomainError('NOT_FOUND', 'No se encontró progresión para iniciar la expedición.');
+    }
+
+    if (!isZoneUnlockedForLevel(selectedZoneConfig.internalKey, progression.currentLevel)) {
+      throw new DomainError(
+        'VALIDATION_ERROR',
+        `Zona bloqueada. Requiere nivel ${selectedZoneConfig.minLevel}.`
+      );
     }
 
     // 2. Fetch current equipment for snapshot
@@ -33,14 +118,22 @@ export const RunResolutionService = {
       BACKPACK: equipment.BACKPACK?.itemDefinitionId || null,
     };
 
-    const dangerConfig: DangerConfig = {
-      baseRate: SHIPYARD_CEMETERY_CONFIG.baseRate,
-      quadraticFactor: SHIPYARD_CEMETERY_CONFIG.quadraticFactor,
-      catastropheThreshold: SHIPYARD_CEMETERY_CONFIG.catastropheThreshold,
-      dangerLootBonus: SHIPYARD_CEMETERY_CONFIG.dangerLootBonus,
-      baseLootPerSecond: SHIPYARD_CEMETERY_CONFIG.baseLootPerSecond,
-      baseCreditsPerMinute: SHIPYARD_CEMETERY_CONFIG.baseCreditsPerMinute,
-      baseXpPerSecond: SHIPYARD_CEMETERY_CONFIG.baseXpPerSecond,
+    const baseDangerConfig: DangerConfig = {
+      baseRate: selectedZoneConfig.baseRate,
+      quadraticFactor: selectedZoneConfig.quadraticFactor,
+      catastropheThreshold: selectedZoneConfig.catastropheThreshold,
+      dangerLootBonus: selectedZoneConfig.dangerLootBonus,
+      baseLootPerSecond: selectedZoneConfig.baseLootPerSecond,
+      baseCreditsPerMinute: selectedZoneConfig.baseCreditsPerMinute,
+      baseXpPerSecond: selectedZoneConfig.baseXpPerSecond,
+    };
+
+    const upgradedDangerConfig = await AccountUpgradeService.applyUpgradesToDangerConfig(userId, baseDangerConfig);
+    const dangerConfig = applyEquipmentToDangerConfig(upgradedDangerConfig, equipmentSnapshot);
+    const normalizedRunMode = resolveRunMode(runMode);
+    const runDangerConfigSnapshot = {
+      ...dangerConfig,
+      runMode: normalizedRunMode,
     };
 
     const startedAt = new Date(); // Server Authority
@@ -54,17 +147,17 @@ export const RunResolutionService = {
           status: 'RUNNING',
           startedAt,
           equipmentSnapshot,
-          dangerConfig: dangerConfig as any,
+           dangerConfig: runDangerConfigSnapshot as any,
         },
       });
 
-      await tx.auditLog.create({
-        data: {
-          userId,
-          action: 'run.start',
-          payload: { runId: newRun.id, zoneId, equipmentSnapshot },
-        },
-      });
+        await tx.auditLog.create({
+          data: {
+            userId,
+            action: 'run.start',
+            payload: { runId: newRun.id, zoneId, runMode: normalizedRunMode, equipmentSnapshot },
+          },
+        });
 
       return newRun.id;
     });
@@ -72,11 +165,20 @@ export const RunResolutionService = {
     return {
       runId,
       zoneId,
+      runMode: normalizedRunMode,
       startedAt: startedAt.toISOString(),
     };
   },
 
-  async resolveExtraction(userId: string, runId: string): Promise<ExtractionResultDTO> {
+  async resolveExtraction(
+    userId: string,
+    runId: string
+  ): Promise<ExtractionResultDTO> {
+    const runById = await db.activeRun.findUnique({ where: { id: runId } });
+    if (runById && runById.userId !== userId) {
+      throw new DomainError('UNAUTHORIZED', 'La expedición no pertenece al usuario autenticado.');
+    }
+
     const activeRun = await RunRepository.findActiveRun(userId);
     
     // Safety checks
@@ -95,13 +197,20 @@ export const RunResolutionService = {
     }
 
     const { dangerConfig, equipmentSnapshot, startedAt } = (activeRun as any);
-    const config = dangerConfig as DangerConfig;
+    const config = dangerConfig as DangerConfig & { runMode?: RunMode };
+    const runMode = resolveRunMode(config.runMode);
     
     const elapsedSeconds = Math.floor((Date.now() - startedAt.getTime()) / 1000);
     const dangerLevel = config.baseRate + (config.quadraticFactor * elapsedSeconds * elapsedSeconds);
     const isCatastrophe = dangerLevel >= config.catastropheThreshold;
 
-    let pendingLoot = computePendingLoot(elapsedSeconds, equipmentSnapshot as EquipmentSnapshot, dangerLevel, config);
+    let pendingLoot = computePendingLoot(
+      elapsedSeconds,
+      equipmentSnapshot as EquipmentSnapshot,
+      dangerLevel,
+      config,
+      runMode,
+    );
     
     // Add bonus loot from anomalies (forced items)
     const bonusLootIds = (activeRun as any).bonusLoot as string[] | null;
@@ -126,13 +235,31 @@ export const RunResolutionService = {
     }
 
     let finalLoot = pendingLoot;
-    let currencyEarned = computeCurrencyReward(elapsedSeconds, dangerLevel, equipmentSnapshot as EquipmentSnapshot, config);
-    let xpEarned = computeXpReward(elapsedSeconds, dangerLevel, config);
+    let currencyEarned = computeCurrencyReward(
+      elapsedSeconds,
+      dangerLevel,
+      equipmentSnapshot as EquipmentSnapshot,
+      config,
+      runMode,
+    );
+    let xpEarned = computeXpReward(
+      elapsedSeconds,
+      dangerLevel,
+      equipmentSnapshot as EquipmentSnapshot,
+      config,
+      runMode,
+    );
 
     // Atomic transaction
     const extractionResult = await db.$transaction(async (tx: any) => {
-        let insuranceUsed = false;
-        
+        const progression = await tx.userProgression.findUnique({
+          where: { userId }
+        });
+
+        const levelRewardBonus = computeLevelRewardBonus(progression?.currentLevel ?? 1);
+        currencyEarned = Math.floor(currencyEarned * levelRewardBonus.currencyMultiplier);
+        xpEarned = Math.floor(xpEarned * levelRewardBonus.xpMultiplier);
+         
         if (isCatastrophe) {
            // Check for insurance
            const insurance = await tx.inventoryItem.findFirst({
@@ -140,8 +267,7 @@ export const RunResolutionService = {
            });
 
            if (insurance) {
-              insuranceUsed = true;
-              finalLoot = applyInsurancePenalty(pendingLoot);
+               finalLoot = applyInsurancePenalty(pendingLoot);
               
               // Consume 1 insurance
               if (insurance.quantity === 1) {
@@ -158,6 +284,10 @@ export const RunResolutionService = {
            
            currencyEarned = 0;
            xpEarned = Math.floor(xpEarned * 0.25);
+
+           if (runMode === RunMode.HARD) {
+             await applyHardModeCatastropheGearLoss(tx, userId, equipmentSnapshot as EquipmentSnapshot);
+           }
         }
 
         for (const item of finalLoot) {
@@ -182,7 +312,7 @@ export const RunResolutionService = {
           }
        }
 
-       const latestLedger = await tx.currencyLedger.findFirst({
+        const latestLedger = await tx.currencyLedger.findFirst({
           where: { userId }, orderBy: { createdAt: 'desc' }
        });
        const prevBalance = latestLedger?.balanceAfter || 0;
@@ -199,10 +329,6 @@ export const RunResolutionService = {
           });
        }
 
-       const progression = await tx.userProgression.findUnique({
-          where: { userId }
-       });
-       
        if (progression) {
           const { newXp, newLevel } = calculateLevelProgress(
              progression.currentXp,
@@ -244,13 +370,13 @@ export const RunResolutionService = {
 
        await tx.activeRun.delete({ where: { id: (activeRun as any).id } });
 
-       await tx.auditLog.create({
-          data: {
-             userId,
-             action: isCatastrophe ? 'run.catastrophe' : 'run.extraction',
-             payload: { runId, elapsedSeconds, finalLoot, currencyEarned, xpEarned }
-          }
-       });
+        await tx.auditLog.create({
+           data: {
+              userId,
+              action: isCatastrophe ? 'run.catastrophe' : 'run.extraction',
+              payload: { runId, runMode, elapsedSeconds, finalLoot, currencyEarned, xpEarned }
+           }
+        });
 
        return result;
     });

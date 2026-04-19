@@ -126,6 +126,9 @@ export function ExpeditionPanel({ activeRun: initialActiveRun, onExtractionResul
             <p className="font-mono text-[10px] text-muted-foreground tracking-[0.3em] uppercase opacity-70">
               Sector_{polledRun.zoneId?.toUpperCase() || 'UNKNOWN'} // Link_Established
             </p>
+            <p className="font-mono text-[10px] text-cyan-300/80 tracking-[0.2em] uppercase">
+              Mode_{polledRun.runMode ?? 'SAFE'}
+            </p>
           </div>
           <div className="flex flex-col items-end">
              <span className="font-mono text-sm text-primary tracking-widest bg-primary/10 px-2 py-0.5 border border-primary/20">

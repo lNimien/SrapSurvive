@@ -15,6 +15,15 @@ export interface InventoryItemDomain {
   quantity: number;
   baseValue: number;
   isEquipable: boolean;
+  equipmentSlot?: EquipmentSlotKey;
+  configOptions?: {
+    dangerResistance?: number;
+    lootMultiplier?: number;
+    currencyMultiplier?: number;
+    xpMultiplier?: number;
+    backpackCapacity?: number;
+    anomalyDetectionBonus?: number;
+  };
 }
 
 export type EquipmentSlotKey = 'HEAD' | 'BODY' | 'HANDS' | 'TOOL_PRIMARY' | 'TOOL_SECONDARY' | 'BACKPACK';
@@ -51,6 +60,8 @@ function toInventoryItemDomain(
     quantity,
     baseValue: def.baseValue,
     isEquipable: def.equipmentSlot !== undefined,
+    equipmentSlot: def.equipmentSlot as EquipmentSlotKey | undefined,
+    configOptions: (def.configOptions ?? undefined) as InventoryItemDomain['configOptions'],
   };
 }
 

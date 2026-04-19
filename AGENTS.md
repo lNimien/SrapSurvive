@@ -599,6 +599,23 @@ npm install server-only client-only
 
 ---
 
+## 19c. Política obligatoria: cada implementación trae tests
+
+Esta política aplica a **todo cambio** (feature, bugfix, refactor, hardening, migración, ajuste de UX con lógica):
+
+1. **Ninguna implementación se considera done sin tests.**
+2. **Siempre debe añadirse o actualizarse al menos un tipo de test** según naturaleza del cambio: unit, integration, action (Server Actions), o e2e.
+3. **Cambios en matemáticas de dominio, economía o state machine** requieren **unit + integration tests** obligatoriamente.
+4. **Cambios de seguridad/ownership/auth** requieren tests de action o integración y, cuando aplique, escenarios multi-usuario (usuario legítimo vs usuario no autorizado).
+5. **Cambios transaccionales de DB** requieren tests de integración que verifiquen rollback (atomicidad) e idempotencia (sin efectos dobles ante reintentos).
+6. **Si el entorno de tests no está disponible** (por ejemplo DB de test no configurada), la tarea queda **bloqueada** y **no puede marcarse como terminada**. Debes reportar:
+   - bloqueador exacto,
+   - qué tests faltan,
+   - comandos pendientes para ejecutarlos cuando el entorno esté listo.
+7. Esta sección **prevalece** sobre cualquier criterio laxo de testing en MVP: en este repositorio, testear es obligatorio para cerrar trabajo.
+
+---
+
 ## 20. Patrones prohibidos
 
 Los siguientes patrones están **explícitamente prohibidos** en este repositorio:
@@ -770,6 +787,9 @@ Una tarea está **done** cuando cumple **todos** los siguientes criterios:
 - [ ] Los componentes de UI respetan la paleta visual del juego
 - [ ] Los estados interactivos tienen feedback visual (hover, active, disabled, loading)
 - [ ] Los elementos interactivos tienen atributos de accesibilidad básicos
+- [ ] Todo cambio (feature/bugfix/refactor) incluye tests nuevos o actualizados acorde al riesgo
+- [ ] Se ejecutaron los tests relevantes del cambio y pasaron en local/CI
+- [ ] Los tests cubren al menos camino feliz + un error o invariante crítico
 - [ ] Si hay nueva lógica de calculador de peligro/loot: tiene unit test
 - [ ] Si el cambio modifica el schema de DB: hay migración y el `docs/architecture.md` está actualizado
 - [ ] Si el cambio es grande: hay ADR en `/docs/decisions/`
@@ -808,6 +828,13 @@ Antes de decir "listo" o "terminado", responde estas preguntas:
 - [ ] ¿Hay algún `any` sin justificación? Si sí: escribe el tipo correcto.
 - [ ] ¿El código es legible sin comentarios adicionales? Si no: refactoriza o comenta donde sea no obvio.
 - [ ] ¿Hay funciones de más de 50 líneas que podrían dividirse? Si sí: divide.
+
+**Testing:**
+
+- [ ] ¿Qué tests agregué/actualicé para este cambio?
+- [ ] ¿Cubren camino feliz + error/invariante crítico?
+- [ ] ¿Ejecuté los tests relevantes y pasaron?
+- [ ] Si no pude ejecutarlos: ¿documenté bloqueador exacto + comandos pendientes y dejé la tarea como bloqueada?
 
 **Documentación:**
 
