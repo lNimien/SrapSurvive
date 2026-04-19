@@ -13,6 +13,18 @@ export const CraftingCalculator = {
     return CRAFTING_RECIPES.find((r) => r.id === recipeId) ?? null;
   },
 
+  isRecipeUnlocked(recipe: Recipe, playerLevel: number): boolean {
+    return Math.max(1, Math.floor(playerLevel)) >= recipe.requiredLevel;
+  },
+
+  getRecipeLockReason(recipe: Recipe, playerLevel: number): string | null {
+    if (this.isRecipeUnlocked(recipe, playerLevel)) {
+      return null;
+    }
+
+    return `Nivel ${recipe.requiredLevel} requerido. Nivel actual: ${Math.max(1, Math.floor(playerLevel))}.`;
+  },
+
   /**
    * Checks if the user has enough materials.
    * inventory items is an array of InventoryItem rows (Prisma style/Partial).

@@ -1,6 +1,7 @@
 import { auth } from '../../../server/auth/auth';
 import { redirect } from 'next/navigation';
 import { InventoryGrid } from '../../../components/game/InventoryGrid';
+import { LoadoutSelector } from '@/components/game/LoadoutSelector';
 import { InventoryRepository } from '../../../server/repositories/inventory.repository';
 import { Separator } from '../../../components/ui/separator';
 import { PlayerStateService } from '@/server/services/player-state.service';
@@ -28,8 +29,9 @@ export default async function InventoryPage() {
 
   const equipableItems = items.filter(i => i.isEquipable);
   const materialItems = items.filter(i => !i.isEquipable);
-  const totalMaterialStacks = materialItems.length;
+  const totalMaterialStacks = materialItems.reduce((sum, item) => sum + item.quantity, 0);
   const totalEquipmentPieces = equipableItems.length;
+  const equippedSlots = Object.values(equipment).filter((slotItem) => slotItem !== null).length;
 
   return (
     <main className="w-full h-full flex flex-col pt-4">
@@ -58,8 +60,8 @@ export default async function InventoryPage() {
           <p className="text-2xl font-mono text-primary">{totalEquipmentPieces}</p>
         </div>
         <div className="border border-primary/20 bg-primary/5 p-3">
-          <p className="text-[10px] uppercase tracking-widest text-primary/70 font-mono">Contratos activos</p>
-          <p className="text-2xl font-mono text-primary">{playerState.contracts.length}</p>
+          <p className="text-[10px] uppercase tracking-widest text-primary/70 font-mono">Slots equipados</p>
+          <p className="text-2xl font-mono text-primary">{equippedSlots}/6</p>
         </div>
       </section>
 
@@ -80,7 +82,7 @@ export default async function InventoryPage() {
 
       <section className="mb-12">
         <h2 className="text-xl font-bold font-sans text-primary mb-4 border-l-4 border-primary pl-3 uppercase tracking-widest bg-gradient-to-r from-primary/10 to-transparent py-1">Equipamiento Táctico</h2>
-        <InventoryGrid items={equipableItems} equipment={equipment} isRunActive={isRunActive} />
+        <LoadoutSelector items={equipableItems} equipment={equipment} isRunActive={isRunActive} />
       </section>
 
       <section className="pb-12">

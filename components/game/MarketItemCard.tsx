@@ -7,6 +7,8 @@ import { Card, CardContent, CardFooter, CardHeader } from '../ui/card';
 import { Button } from '../ui/button';
 import { Slider } from '../ui/slider';
 import { useToast } from '@/hooks/use-toast';
+import { getRarityVisuals } from '@/lib/utils/rarity';
+import { normalizeSellAmount } from '@/lib/utils/market-sell';
 
 interface MarketItemCardProps {
   item: InventoryItemDTO & { currentPrice?: number };
@@ -80,27 +82,27 @@ export function MarketItemCard({ item, isRunActive }: MarketItemCardProps) {
         }
       }
     });
-  }, [visuallyDisabled, item.itemDefinitionId, item.quantity, sellAmount]);
+  }, [visuallyDisabled, item.itemDefinitionId, item.quantity, item.displayName, potentialEarnings, sellAmount, toast]);
 
-  const onSliderChange = useCallback((vals: number[]) => {
-    if (vals && vals.length > 0) {
-      setSellAmount(vals[0]);
+  const onSliderChange = useCallback((value: number | readonly number[]) => {
+    const rawValue = Array.isArray(value) ? value[0] : value;
+    if (typeof rawValue === 'number') {
+      setSellAmount(normalizeSellAmount(rawValue, item.quantity || 1));
     }
-  }, []);
+  }, [item.quantity]);
 
   const onInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value === '' ? 1 : Math.min(Math.max(1, Number(e.target.value)), item.quantity || 1);
+    const val = e.target.value === '' ? 1 : normalizeSellAmount(Number(e.target.value), item.quantity || 1);
     setSellAmount(val);
   }, [item.quantity]);
 
-  // Clase de rareza memorizada
-  const rarityColorClass = useMemo(() => `rarity-border-${item.rarity.toLowerCase()}`, [item.rarity]);
+  const rarityVisuals = useMemo(() => getRarityVisuals(item.rarity), [item.rarity]);
 
   // Array memorizado para Base UI Slider para evitar cancelación de arrastre por nueva de referencia
   const sliderValue = useMemo(() => [sellAmount], [sellAmount]);
 
   return (
-    <Card className={`glass-panel border-l-4 ${rarityColorClass} cyberpunk-box transition-all hover:border-primary/50 hover:shadow-[0_0_20px_rgba(0,243,255,0.1)] flex flex-col justify-between`}>
+    <Card className={`glass-panel border-l-4 ${rarityVisuals.borderClass} ${rarityVisuals.bgClass} cyberpunk-box transition-all hover:border-primary/50 hover:shadow-[0_0_20px_rgba(0,243,255,0.1)] flex flex-col justify-between`}>
       <MarketItemVisuals item={item} />
 
       <CardContent className="p-4 pt-2 pb-2">
@@ -108,7 +110,7 @@ export function MarketItemCard({ item, isRunActive }: MarketItemCardProps) {
           <div className="flex items-center gap-4">
              <Slider 
                min={1} 
-               max={Math.max(2, item.quantity)} 
+               max={Math.max(1, item.quantity)} 
                step={1}
                orientation="horizontal"
                value={sliderValue}

@@ -8,7 +8,8 @@ import {
   WEEKLY_DIRECTIVES,
   WeeklyDirectiveMetric,
 } from '@/config/liveops.config';
-import { WeeklyDirectiveClaimResultDTO, WeeklyGoalsDTO } from '@/types/dto.types';
+import { ITEM_CATALOG } from '@/config/game.config';
+import { WeeklyDirectiveClaimResultDTO, WeeklyGoalsDTO, WeeklyRewardItemDTO } from '@/types/dto.types';
 import { ExtractionHistoryDomain, RunRepository } from '@/server/repositories/run.repository';
 import { DomainError } from '@/server/domain/inventory/inventory.service';
 import { db } from '@/server/db/client';
@@ -109,6 +110,8 @@ function resolveMetricValue(metric: WeeklyDirectiveMetric, stats: WeeklyDirectiv
 const WEEKLY_DIRECTIVE_BY_ID = new Map(WEEKLY_DIRECTIVES.map((directive) => [directive.id, directive]));
 
 export type ClaimAttemptOutcome = 'CLAIMED' | 'ALREADY_CLAIMED' | 'NOT_CLAIMABLE';
+export type ClaimAttemptAuditOutcome = ClaimAttemptOutcome | 'FEATURE_DISABLED' | 'ERROR';
+export const WEEKLY_CLAIM_NOT_CLAIMABLE_MESSAGE = 'La directiva semanal todavía no es reclamable.';
 
 export function resolveClaimAttemptOutcome(input: {
   updatedCount: number;
@@ -154,7 +157,90 @@ async function getCurrentBalanceAndProgression(
   };
 }
 
+function toWeeklyRewardItemDTO(input: { itemDefId: string; quantity: number }): WeeklyRewardItemDTO | null {
+  const itemDefinition = ITEM_CATALOG.find((item) => item.id === input.itemDefId);
+  if (!itemDefinition) {
+    return null;
+  }
+
+  return {
+    itemDefinitionId: itemDefinition.id,
+    displayName: itemDefinition.displayName,
+    iconKey: itemDefinition.iconKey,
+    quantity: input.quantity,
+  };
+}
+
+function toWeeklyRewardItemsDTO(input: { itemDefId: string; quantity: number }[]): WeeklyRewardItemDTO[] {
+  return input
+    .map((rewardItem) => toWeeklyRewardItemDTO(rewardItem))
+    .filter((rewardItem): rewardItem is WeeklyRewardItemDTO => rewardItem !== null);
+}
+
+async function grantWeeklyRewardItems(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  rewardItems: WeeklyRewardItemDTO[],
+): Promise<void> {
+  for (const rewardItem of rewardItems) {
+    await tx.inventoryItem.upsert({
+      where: {
+        userId_itemDefinitionId: {
+          userId,
+          itemDefinitionId: rewardItem.itemDefinitionId,
+        },
+      },
+      create: {
+        userId,
+        itemDefinitionId: rewardItem.itemDefinitionId,
+        quantity: rewardItem.quantity,
+        acquiredAt: new Date(),
+      },
+      update: {
+        quantity: {
+          increment: rewardItem.quantity,
+        },
+        acquiredAt: new Date(),
+      },
+    });
+  }
+}
+
 export const WeeklyGoalsService = {
+  async trackClaimAttempt(input: {
+    userId?: string | null;
+    directiveKey?: string | null;
+    weekStart?: string | null;
+    outcome: ClaimAttemptAuditOutcome;
+    durationMs: number;
+    errorCode?: string;
+    errorMessage?: string;
+  }): Promise<void> {
+    try {
+      await db.auditLog.create({
+        data: {
+          userId: input.userId ?? null,
+          action: 'liveops.weekly.claim_attempt',
+          payload: {
+            directiveKey: input.directiveKey ?? null,
+            weekStart: input.weekStart ?? null,
+            outcome: input.outcome,
+            durationMs: Math.max(0, Math.floor(input.durationMs)),
+            errorCode: input.errorCode,
+            errorMessage: input.errorMessage,
+          },
+        },
+      });
+    } catch (error) {
+      console.warn('[WeeklyGoalsService.trackClaimAttempt] Failed to persist claim attempt audit.', {
+        outcome: input.outcome,
+        directiveKey: input.directiveKey,
+        weekStart: input.weekStart,
+        error,
+      });
+    }
+  },
+
   async syncWeeklyDirectives(userId: string, now = new Date()) {
     const { weekStart, weekEnd } = getWeekWindowUTC(now);
     const weeklyExtractions = await RunRepository.listExtractionHistoryWithinWindow(userId, weekStart, weekEnd);
@@ -229,6 +315,7 @@ export const WeeklyGoalsService = {
       weekStart: weekStart.toISOString(),
       activeEvent: ACTIVE_EVENT,
       directives: WEEKLY_DIRECTIVES.map((directive) => {
+        const normalizedReward = normalizeWeeklyDirectiveReward(directive);
         const row = persistedByDirective.get(directive.id);
         const target = row?.target ?? Math.max(1, Math.floor(directive.target));
         const progress = row?.progress ?? 0;
@@ -248,8 +335,9 @@ export const WeeklyGoalsService = {
           status,
           claimable,
           claimed,
-          rewardCC: row?.rewardCC ?? normalizeWeeklyDirectiveReward(directive).rewardCC,
-          rewardXP: row?.rewardXP ?? normalizeWeeklyDirectiveReward(directive).rewardXP,
+          rewardCC: row?.rewardCC ?? normalizedReward.rewardCC,
+          rewardXP: row?.rewardXP ?? normalizedReward.rewardXP,
+          rewardItems: toWeeklyRewardItemsDTO(normalizedReward.rewardItems),
           claimedAt: claimedAt ? claimedAt.toISOString() : null,
         };
       }),
@@ -272,6 +360,8 @@ export const WeeklyGoalsService = {
     }
 
     const { weekStart } = getWeekWindowUTC(requestedWeekStart);
+    const normalizedReward = normalizeWeeklyDirectiveReward(directive);
+    const rewardItems = toWeeklyRewardItemsDTO(normalizedReward.rewardItems);
     await this.syncWeeklyDirectives(userId, requestedWeekStart);
 
     return db.$transaction(async (tx) => {
@@ -298,6 +388,7 @@ export const WeeklyGoalsService = {
           weekStart: row.weekStart.toISOString(),
           rewardCC: row.rewardCC,
           rewardXP: row.rewardXP,
+          rewardItems,
           newBalance: balance,
           newLevel: progression.currentLevel,
           currentXp: progression.currentXp,
@@ -345,6 +436,7 @@ export const WeeklyGoalsService = {
             weekStart: refreshed.weekStart.toISOString(),
             rewardCC: refreshed.rewardCC,
             rewardXP: refreshed.rewardXP,
+            rewardItems,
             newBalance: balance,
             newLevel: progression.currentLevel,
             currentXp: progression.currentXp,
@@ -353,7 +445,7 @@ export const WeeklyGoalsService = {
           };
         }
 
-        throw new DomainError('VALIDATION_ERROR', 'La directiva semanal todavía no es reclamable.');
+        throw new DomainError('VALIDATION_ERROR', WEEKLY_CLAIM_NOT_CLAIMABLE_MESSAGE);
       }
 
       const { balance, progression } = await getCurrentBalanceAndProgression(tx, userId);
@@ -374,6 +466,8 @@ export const WeeklyGoalsService = {
         throw new Error('Forced weekly directive claim failure after ledger write.');
       }
 
+      await grantWeeklyRewardItems(tx, userId, rewardItems);
+
       await tx.userProgression.update({
         where: { userId },
         data: {
@@ -391,6 +485,7 @@ export const WeeklyGoalsService = {
             weekStart: row.weekStart.toISOString(),
             rewardCC: row.rewardCC,
             rewardXP: row.rewardXP,
+            rewardItems,
             referenceId,
           },
         },
@@ -401,6 +496,7 @@ export const WeeklyGoalsService = {
         weekStart: row.weekStart.toISOString(),
         rewardCC: row.rewardCC,
         rewardXP: row.rewardXP,
+        rewardItems,
         newBalance,
         newLevel: xpProgress.newLevel,
         currentXp: xpProgress.newXp,

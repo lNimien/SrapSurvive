@@ -176,13 +176,19 @@ Referencias de planning:
 - ✅ C.1 foundation (telemetría/observabilidad base) aplicado en slice anterior
 - ✅ D.1 profundidad de contenido aplicado en este slice
 - ✅ D.2 aplicado (run modes SAFE/HARD + pass de UX/economía/workshop)
-- 🟡 D.3 parcial: implementado low-churn slice (sinergias, directivas read-only, analítica jugador)
-- 🔲 D.3b pendiente: runbooks operativos/incident response de economía y gobierno formal de balance
+- ✅ D.3 completado: sinergias + directivas semanales persistentes (claimables) + analítica jugador
+- ✅ D.3b completado: runbooks operativos/incident response y gobierno formal de balance
+- ✅ D.4a completado: mitigation flags + guards de mutación + claim semanal transaccional con item rewards
+- ✅ D.4b completado: observabilidad operativa de claims + race hardening + runbook de incidentes
 
-### D.3 low-churn implementado en este slice
+### D.3 + D.4a implementado (estado actual)
 
 - **Buildcraft/sinergias:** resolución de sinergias y arquetipo activos por configuración y aplicados server-side en cálculo de run con caps explícitos.
-- **LiveOps read-only:** evento activo + directivas semanales derivadas de tablas existentes (sin claims persistentes por ahora).
+- **LiveOps persistente:** evento activo + directivas semanales por usuario/semana con claim atómico e idempotente.
+- **Rewards semanales extendidas:** claim aplica CC + XP + item rewards via upsert de inventario en la misma transacción.
+- **Guardrails D.4a:** kill-switches por categoría de mutación y cobertura action tests para rutas bloqueadas/permitidas.
+- **Operación D.4b:** Weekly Claims Health en `/ops` (outcomes, ratio éxito, latencia p50/p95, faucet por itemDefId) + runbook específico de incidente.
+- **Concurrencia D.4b:** prueba de doble claim simultáneo con settlement único y sin efectos duplicados en ledger/xp/inventory.
 - **Analytics jugador:** métricas agregadas de rendimiento personal y mix SAFE/HARD para lectura táctica.
 - **Feature flags D3:** paneles de dashboard ocultables por flags específicas (`FEATURE_D3_*`).
 
@@ -191,7 +197,7 @@ Referencias de planning:
 - Run modes autoritativos (`SAFE`/`HARD`) con riesgo/recompensa diferenciada.
 - Catástrofe en HARD consume equipo snapshotteado en la misma transacción (slots + inventario).
 - SAFE mantiene equipo en catástrofe.
-- Reorganización de dashboard para contratos/upgrades/achievements más accionables en primera pantalla.
+- Dashboard consolidado como command-bridge (run + estado del jugador), con contratos/upgrades/logros movidos a páginas dedicadas.
 - Workshop con filtros por categoría y expansión de recetas + incremento fuerte de costos.
 - Nerf global de venta en mercado con fórmula dedicada y preview UI alineado al settlement real.
 

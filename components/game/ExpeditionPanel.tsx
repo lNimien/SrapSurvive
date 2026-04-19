@@ -1,7 +1,7 @@
 'use client';
 
 import { RunStateDTO, ExtractionResultDTO } from '../../types/dto.types';
-import { useRunPolling, useCountdown } from '../../hooks/useRunPolling';
+import { useRunPolling, useCountdown, useDangerInterpolation } from '../../hooks/useRunPolling';
 import { DangerMeter } from './DangerMeter';
 import { LootPreview } from './LootPreview';
 import { ExtractButton } from './ExtractButton';
@@ -23,7 +23,7 @@ export function ExpeditionPanel({ activeRun: initialActiveRun, onExtractionResul
   const { toast } = useToast();
   const polledRun = useRunPolling(initialActiveRun);
   const visualElapsed = useCountdown(polledRun.elapsedSeconds || 0, polledRun.status !== 'idle');
-  const visualDanger = polledRun.dangerLevel || 0.0;
+  const visualDanger = useDangerInterpolation(polledRun);
   
   const handleExtractionCompleted = (result: ExtractionResultDTO) => {
      if (onExtractionResult) {
@@ -34,6 +34,8 @@ export function ExpeditionPanel({ activeRun: initialActiveRun, onExtractionResul
   const isCatastrophe = polledRun.status === 'catastrophe';
   const anomaly = polledRun.anomaly;
   const [isResolving, setIsResolving] = useState(false);
+  const dangerTrend: 'rising' | 'stable' = visualDanger > (polledRun.dangerLevel ?? 0) ? 'rising' : 'stable';
+  const signalNoise = Math.min(100, Math.round(visualDanger * 72 + (polledRun.pendingLoot?.length ?? 0) * 3));
 
   const handleResolveAnomaly = async (decision: 'IGNORE' | 'INVESTIGATE') => {
     if (!anomaly || !polledRun.runId) return;
@@ -145,8 +147,23 @@ export function ExpeditionPanel({ activeRun: initialActiveRun, onExtractionResul
 
       <CardContent className="space-y-6 relative z-10 px-6">
         <div className="py-2">
-          <DangerMeter dangerLevel={visualDanger} status={polledRun.status} />
+          <DangerMeter dangerLevel={visualDanger} status={polledRun.status} trend={dangerTrend} />
         </div>
+
+        <section className="grid grid-cols-1 md:grid-cols-3 gap-3" aria-label="Telemetría continua de amenaza">
+          <div className="border border-primary/15 bg-primary/5 px-3 py-2">
+            <p className="text-[10px] font-mono uppercase tracking-widest text-primary/60">Signal Noise</p>
+            <p className="font-mono text-lg text-primary">{signalNoise}%</p>
+          </div>
+          <div className="border border-primary/15 bg-primary/5 px-3 py-2">
+            <p className="text-[10px] font-mono uppercase tracking-widest text-primary/60">Threat Vector</p>
+            <p className="font-mono text-lg text-primary">{dangerTrend === 'rising' ? 'ASCENDENTE' : 'ESTABLE'}</p>
+          </div>
+          <div className="border border-primary/15 bg-primary/5 px-3 py-2">
+            <p className="text-[10px] font-mono uppercase tracking-widest text-primary/60">Live Tick</p>
+            <p className="font-mono text-lg text-primary">{visualElapsed}s</p>
+          </div>
+        </section>
 
         <section className="bg-background/60 border border-primary/10 p-4 relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-8 h-8 pointer-events-none">

@@ -76,6 +76,7 @@ export interface ZoneDefinition {
 export interface Recipe {
   id: string;
   resultItemDefId: string;
+  requiredLevel: number;
   requiredMaterials: { itemDefId: string; quantity: number }[];
   costCC: number;
 }

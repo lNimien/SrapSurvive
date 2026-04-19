@@ -54,4 +54,46 @@ describe('economy observability service internals', () => {
     expect(economyObservabilityInternals.getEntryAmountByType(groupedEntries, 'CONTRACT_REWARD')).toBe(0);
     expect(economyObservabilityInternals.getEntryAmountByType(groupedEntries, 'PURCHASE')).toBe(0);
   });
+
+  it('computes p50/p95 latency percentiles from claim attempts', () => {
+    const samples = [12, 30, 45, 70, 120, 220];
+
+    expect(economyObservabilityInternals.computeLatencyPercentile(samples, 0.5)).toBe(45);
+    expect(economyObservabilityInternals.computeLatencyPercentile(samples, 0.95)).toBe(220);
+    expect(economyObservabilityInternals.computeLatencyPercentile([], 0.95)).toBeNull();
+  });
+
+  it('aggregates weekly claim outcomes, success ratio and faucet by item', () => {
+    const telemetry = economyObservabilityInternals.aggregateWeeklyClaimWindow(
+      [
+        { createdAt: new Date('2026-04-19T09:00:00.000Z'), outcome: 'CLAIMED', durationMs: 80 },
+        { createdAt: new Date('2026-04-19T10:00:00.000Z'), outcome: 'ALREADY_CLAIMED', durationMs: 30 },
+        { createdAt: new Date('2026-04-19T11:00:00.000Z'), outcome: 'ERROR', durationMs: 150 },
+      ],
+      [
+        {
+          createdAt: new Date('2026-04-19T09:00:00.000Z'),
+          rewardItems: [
+            { itemDefinitionId: 'scrap_metal', quantity: 80 },
+            { itemDefinitionId: 'energy_cell', quantity: 30 },
+          ],
+        },
+      ],
+    );
+
+    expect(telemetry.totalAttempts).toBe(3);
+    expect(telemetry.attemptsByOutcome).toEqual({
+      CLAIMED: 1,
+      ALREADY_CLAIMED: 1,
+      NOT_CLAIMABLE: 0,
+      FEATURE_DISABLED: 0,
+      ERROR: 1,
+    });
+    expect(telemetry.successRatio).toBeCloseTo(1 / 3, 6);
+    expect(telemetry.latency).toEqual({ p50Ms: 80, p95Ms: 150 });
+    expect(telemetry.itemFaucetByItemDef).toEqual([
+      { itemDefinitionId: 'scrap_metal', quantity: 80 },
+      { itemDefinitionId: 'energy_cell', quantity: 30 },
+    ]);
+  });
 });

@@ -6,6 +6,7 @@ import { buyItemAction } from '../../server/actions/economy.actions';
 import { Card, CardContent, CardFooter, CardHeader } from '../ui/card';
 import { Button } from '../ui/button';
 import { useToast } from '../../hooks/use-toast';
+import { getRarityVisuals } from '@/lib/utils/rarity';
 
 interface VendorItemCardProps {
   item: ItemDefinition;
@@ -42,10 +43,10 @@ export function VendorItemCard({ item, priceCC, currentBalance, isRunActive }: V
     });
   }, [visuallyDisabled, canAfford, item.id, item.displayName, toast]);
 
-  const rarityColorClass = useMemo(() => `rarity-border-${item.rarity.toLowerCase()}`, [item.rarity]);
+  const rarityVisuals = useMemo(() => getRarityVisuals(item.rarity), [item.rarity]);
 
   return (
-    <Card className={`glass-panel border-l-4 ${rarityColorClass} cyberpunk-box transition-all hover:border-primary/50 hover:shadow-[0_0_20px_rgba(0,243,255,0.1)] flex flex-col justify-between h-full`}>
+    <Card className={`glass-panel border-l-4 ${rarityVisuals.borderClass} ${rarityVisuals.bgClass} cyberpunk-box transition-all hover:border-primary/50 hover:shadow-[0_0_20px_rgba(0,243,255,0.1)] flex flex-col justify-between h-full`}>
       <CardHeader className="p-4 pb-2 flex flex-row items-start justify-between space-y-0">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 bg-background/50 border border-border flex items-center justify-center shadow-[inset_0_0_10px_rgba(0,243,255,0.1)]">

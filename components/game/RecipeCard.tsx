@@ -9,6 +9,7 @@ import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Hammer, Package, Coins, CheckCircle2, XCircle, Info } from 'lucide-react';
 import { cn } from '@/lib/utils/cn';
+import { getRarityVisuals } from '@/lib/utils/rarity';
 import {
   Tooltip,
   TooltipContent,
@@ -24,7 +25,7 @@ export function RecipeCard({ recipe, isRunActive }: RecipeCardProps) {
   const [isPending, startTransition] = useTransition();
   const { toast } = useToast();
 
-  const canCraft = recipe.canAffordCC && recipe.canAffordMaterials && !isRunActive;
+  const canCraft = recipe.canAffordCC && recipe.canAffordMaterials && !recipe.isLevelLocked && !isRunActive;
 
   const handleCraft = () => {
     if (!canCraft || isPending) return;
@@ -47,14 +48,14 @@ export function RecipeCard({ recipe, isRunActive }: RecipeCardProps) {
     });
   };
 
-  const rarityColorClass = `rarity-border-${recipe.resultItem.rarity.toLowerCase()}`;
+  const rarityVisuals = getRarityVisuals(recipe.resultItem.rarity);
 
   return (
-    <Card className={cn(
-      "glass-panel border-l-4 cyberpunk-box transition-all flex flex-col h-full",
-      rarityColorClass,
-      canCraft ? "hover:shadow-[0_0_20px_rgba(0,243,255,0.1)]" : "opacity-80"
-    )}>
+      <Card className={cn(
+        "glass-panel border-l-4 cyberpunk-box transition-all flex flex-col h-full",
+        rarityVisuals.borderClass,
+        canCraft ? "hover:shadow-[0_0_20px_rgba(0,243,255,0.1)]" : "opacity-80"
+      )}>
       <CardHeader className="p-4 pb-2">
         <div className="flex justify-between items-start">
           <div className="flex gap-3">
@@ -68,6 +69,9 @@ export function RecipeCard({ recipe, isRunActive }: RecipeCardProps) {
               <div className="flex items-center gap-2 mt-1">
                 <Badge variant="outline" className="text-[10px] py-0 font-mono border-primary/30 text-primary/70">
                   {recipe.resultItem.equipmentSlot || "CONSUMABLE"}
+                </Badge>
+                <Badge variant="outline" className={cn('text-[10px] py-0 font-mono', rarityVisuals.textClass)}>
+                  Nv {recipe.requiredLevel}
                 </Badge>
                 <Tooltip>
                   <TooltipTrigger>
@@ -137,6 +141,12 @@ export function RecipeCard({ recipe, isRunActive }: RecipeCardProps) {
                 {!recipe.canAffordCC && <XCircle className="w-3 h-3 text-destructive" />}
              </div>
           </div>
+
+          {recipe.isLevelLocked && (
+            <div className="p-2 mt-2 bg-destructive/10 border border-destructive/30 rounded text-xs font-mono text-destructive">
+              {recipe.lockReason}
+            </div>
+          )}
         </div>
       </CardContent>
 
@@ -157,6 +167,8 @@ export function RecipeCard({ recipe, isRunActive }: RecipeCardProps) {
             </div>
           ) : isRunActive ? (
             "No disponible en expedición"
+          ) : recipe.isLevelLocked ? (
+            `Bloqueado por nivel (Nv ${recipe.requiredLevel})`
           ) : !canCraft ? (
             "Recursos Insuficientes"
           ) : (

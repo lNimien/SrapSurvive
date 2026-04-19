@@ -1,11 +1,13 @@
 import { Progress } from '../ui/progress';
+import { cn } from '@/lib/utils/cn';
 
 interface DangerMeterProps {
   dangerLevel: number;
   status: 'running' | 'catastrophe' | 'idle';
+  trend: 'rising' | 'stable';
 }
 
-export function DangerMeter({ dangerLevel, status }: DangerMeterProps) {
+export function DangerMeter({ dangerLevel, status, trend }: DangerMeterProps) {
   const percentage = Math.min(Math.max(dangerLevel * 100, 0), 100);
   const isCatastrophe = status === 'catastrophe';
 
@@ -17,6 +19,14 @@ export function DangerMeter({ dangerLevel, status }: DangerMeterProps) {
         ? 'text-yellow-500' 
         : 'text-primary';
 
+  const operationalCopy = isCatastrophe
+    ? 'Catástrofe activa — extrae inmediatamente'
+    : percentage >= 85
+      ? 'Zona colapsando — ventana mínima'
+      : percentage >= 60
+        ? 'Amenaza alta — prepárate para evacuar'
+        : 'Amenaza controlada — continúa recolectando';
+
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-end">
@@ -25,9 +35,14 @@ export function DangerMeter({ dangerLevel, status }: DangerMeterProps) {
             <div className={`w-2 h-2 rounded-full animate-pulse ${isCatastrophe ? 'bg-destructive shadow-[0_0_8px_rgba(239,68,68,0.8)]' : 'bg-primary shadow-[0_0_8px_rgba(0,243,255,0.8)]'}`} />
             <h4 className="text-[10px] font-mono text-muted-foreground uppercase tracking-[0.3em]">Ambience_Threat_Level</h4>
           </div>
-          <div className={`text-4xl font-mono font-black tracking-tighter ${statusColor} ${isCatastrophe ? 'animate-pulse' : ''} transition-colors duration-500`}>
+          <div className={cn(
+            'text-4xl font-mono font-black tracking-tighter transition-colors duration-500 motion-reduce:transition-none',
+            statusColor,
+            isCatastrophe && 'animate-pulse motion-reduce:animate-none',
+          )}>
             {percentage.toFixed(1)}%
           </div>
+          <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-primary/70">{operationalCopy}</p>
         </div>
 
         <div className="text-right space-y-1">
@@ -39,13 +54,16 @@ export function DangerMeter({ dangerLevel, status }: DangerMeterProps) {
           }`}>
              {status === 'catastrophe' ? '!! CRITICAL !!' : 'NOMINAL_FLOW'}
           </div>
+          <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-muted-foreground">
+            Threat trend: {trend === 'rising' ? '▲ Rising' : '■ Stable'}
+          </p>
         </div>
       </div>
 
       <div className="relative pt-2">
         <Progress 
           value={percentage} 
-          className={`h-3 rounded-none bg-background/50 border border-white/5 ${isCatastrophe ? '[&>div]:bg-destructive' : '[&>div]:bg-primary shadow-[0_0_10px_rgba(0,243,255,0.2)]'}`}
+          className={`h-3 rounded-none bg-background/50 border border-white/5 motion-reduce:transition-none ${isCatastrophe ? '[&>div]:bg-destructive' : '[&>div]:bg-primary shadow-[0_0_10px_rgba(0,243,255,0.2)]'}`}
         />
         
         {/* Decorative Grid markings */}

@@ -8,6 +8,26 @@ import { seedTestUser } from '@/server/__tests__/helpers/db-test-utils';
 import { WeeklyGoalsService } from '@/server/services/weekly-goals.service';
 
 const NOW = new Date('2026-04-19T12:00:00.000Z');
+const CLAIM_DIRECTIVE_KEY = 'directive-materials-1500';
+const CLAIM_REFERENCE_ID = 'weekly-directive:directive-materials-1500:2026-04-13:claim';
+
+async function getInventoryQuantities(
+  userId: string,
+  itemDefinitionIds: string[],
+): Promise<Record<string, number>> {
+  const rows = await db.inventoryItem.findMany({
+    where: {
+      userId,
+      itemDefinitionId: { in: itemDefinitionIds },
+    },
+  });
+
+  return itemDefinitionIds.reduce<Record<string, number>>((acc, itemDefinitionId) => {
+    const row = rows.find((entry) => entry.itemDefinitionId === itemDefinitionId);
+    acc[itemDefinitionId] = row?.quantity ?? 0;
+    return acc;
+  }, {});
+}
 
 async function seedExtractionResultsForWeeklyProgress(userId: string): Promise<void> {
   const rows = Array.from({ length: 12 }).map((_, index) => {
@@ -69,22 +89,25 @@ describe('WeeklyGoalsService persistent directives (integration)', () => {
     await seedExtractionResultsForWeeklyProgress(userId);
 
     const goals = await WeeklyGoalsService.getWeeklyGoals(userId, NOW);
-    const claimableDirective = goals.directives.find((entry) => entry.id === 'directive-materials-1500');
+    const claimableDirective = goals.directives.find((entry) => entry.id === CLAIM_DIRECTIVE_KEY);
 
     expect(claimableDirective?.claimable).toBe(true);
+    const rewardedItemIds = claimableDirective?.rewardItems.map((item) => item.itemDefinitionId) ?? [];
+    const inventoryBeforeClaim = await getInventoryQuantities(userId, rewardedItemIds);
 
     const claimResult = await WeeklyGoalsService.claimWeeklyDirective(userId, {
-      directiveKey: 'directive-materials-1500',
+      directiveKey: CLAIM_DIRECTIVE_KEY,
       weekStart: goals.weekStart,
     });
 
     expect(claimResult.alreadyClaimed).toBe(false);
+    expect(claimResult.rewardItems).toEqual(claimableDirective?.rewardItems ?? []);
 
     const progressRow = await db.weeklyDirectiveProgress.findUnique({
       where: {
         userId_directiveKey_weekStart: {
           userId,
-          directiveKey: 'directive-materials-1500',
+          directiveKey: CLAIM_DIRECTIVE_KEY,
           weekStart: new Date(goals.weekStart),
         },
       },
@@ -96,10 +119,17 @@ describe('WeeklyGoalsService persistent directives (integration)', () => {
     const claimLedgerRows = await db.currencyLedger.findMany({
       where: {
         userId,
-        referenceId: 'weekly-directive:directive-materials-1500:2026-04-13:claim',
+        referenceId: CLAIM_REFERENCE_ID,
       },
     });
     expect(claimLedgerRows).toHaveLength(1);
+
+    const inventoryAfterClaim = await getInventoryQuantities(userId, rewardedItemIds);
+    for (const rewardItem of claimResult.rewardItems) {
+      expect(inventoryAfterClaim[rewardItem.itemDefinitionId]).toBe(
+        inventoryBeforeClaim[rewardItem.itemDefinitionId] + rewardItem.quantity,
+      );
+    }
   });
 
   it('returns already-claimed deterministically on second claim without duplicating reward', async () => {
@@ -109,13 +139,18 @@ describe('WeeklyGoalsService persistent directives (integration)', () => {
 
     const goals = await WeeklyGoalsService.getWeeklyGoals(userId, NOW);
 
+    const claimableDirective = goals.directives.find((entry) => entry.id === CLAIM_DIRECTIVE_KEY);
+    const rewardedItemIds = claimableDirective?.rewardItems.map((item) => item.itemDefinitionId) ?? [];
+
     await WeeklyGoalsService.claimWeeklyDirective(userId, {
-      directiveKey: 'directive-materials-1500',
+      directiveKey: CLAIM_DIRECTIVE_KEY,
       weekStart: goals.weekStart,
     });
 
+    const inventoryAfterFirstClaim = await getInventoryQuantities(userId, rewardedItemIds);
+
     const secondClaim = await WeeklyGoalsService.claimWeeklyDirective(userId, {
-      directiveKey: 'directive-materials-1500',
+      directiveKey: CLAIM_DIRECTIVE_KEY,
       weekStart: goals.weekStart,
     });
 
@@ -124,14 +159,80 @@ describe('WeeklyGoalsService persistent directives (integration)', () => {
     const claimLedgerRows = await db.currencyLedger.findMany({
       where: {
         userId,
-        referenceId: 'weekly-directive:directive-materials-1500:2026-04-13:claim',
+        referenceId: CLAIM_REFERENCE_ID,
       },
     });
     expect(claimLedgerRows).toHaveLength(1);
 
+    const inventoryAfterSecondClaim = await getInventoryQuantities(userId, rewardedItemIds);
+    expect(inventoryAfterSecondClaim).toEqual(inventoryAfterFirstClaim);
+
     const progression = await db.userProgression.findUnique({ where: { userId } });
     expect(progression?.currentXp).toBe(70);
     expect(secondClaim.currentXp).toBe(70);
+  });
+
+  it('handles concurrent double-claim with single reward settlement and deterministic second outcome', async () => {
+    const userId = 'user-weekly-claim-race';
+    await seedTestUser(userId);
+    await seedExtractionResultsForWeeklyProgress(userId);
+
+    const goals = await WeeklyGoalsService.getWeeklyGoals(userId, NOW);
+    const claimableDirective = goals.directives.find((entry) => entry.id === CLAIM_DIRECTIVE_KEY);
+
+    expect(claimableDirective?.claimable).toBe(true);
+
+    const rewardedItemIds = claimableDirective?.rewardItems.map((item) => item.itemDefinitionId) ?? [];
+    const inventoryBeforeRace = await getInventoryQuantities(userId, rewardedItemIds);
+
+    const [firstRaceResult, secondRaceResult] = await Promise.all([
+      WeeklyGoalsService.claimWeeklyDirective(userId, {
+        directiveKey: CLAIM_DIRECTIVE_KEY,
+        weekStart: goals.weekStart,
+      }),
+      WeeklyGoalsService.claimWeeklyDirective(userId, {
+        directiveKey: CLAIM_DIRECTIVE_KEY,
+        weekStart: goals.weekStart,
+      }),
+    ]);
+
+    const raceResults = [firstRaceResult, secondRaceResult];
+    const successResults = raceResults.filter((result) => !result.alreadyClaimed);
+    const alreadyClaimedResults = raceResults.filter((result) => result.alreadyClaimed);
+
+    expect(successResults).toHaveLength(1);
+    expect(alreadyClaimedResults).toHaveLength(1);
+
+    const claimLedgerRows = await db.currencyLedger.findMany({
+      where: {
+        userId,
+        referenceId: CLAIM_REFERENCE_ID,
+      },
+    });
+    expect(claimLedgerRows).toHaveLength(1);
+
+    const inventoryAfterRace = await getInventoryQuantities(userId, rewardedItemIds);
+    for (const rewardItem of claimableDirective?.rewardItems ?? []) {
+      expect(inventoryAfterRace[rewardItem.itemDefinitionId]).toBe(
+        inventoryBeforeRace[rewardItem.itemDefinitionId] + rewardItem.quantity,
+      );
+    }
+
+    const progression = await db.userProgression.findUnique({ where: { userId } });
+    expect(progression?.currentXp).toBe(claimableDirective?.rewardXP ?? 0);
+
+    const progressRow = await db.weeklyDirectiveProgress.findUnique({
+      where: {
+        userId_directiveKey_weekStart: {
+          userId,
+          directiveKey: CLAIM_DIRECTIVE_KEY,
+          weekStart: new Date(goals.weekStart),
+        },
+      },
+    });
+
+    expect(progressRow?.status).toBe('CLAIMED');
+    expect(progressRow?.claimedAt).not.toBeNull();
   });
 
   it('rolls back weekly claim when forced failure happens mid-transaction', async () => {
@@ -140,12 +241,15 @@ describe('WeeklyGoalsService persistent directives (integration)', () => {
     await seedExtractionResultsForWeeklyProgress(userId);
 
     const goals = await WeeklyGoalsService.getWeeklyGoals(userId, NOW);
+    const claimableDirective = goals.directives.find((entry) => entry.id === CLAIM_DIRECTIVE_KEY);
+    const rewardedItemIds = claimableDirective?.rewardItems.map((item) => item.itemDefinitionId) ?? [];
+    const inventoryBeforeFailure = await getInventoryQuantities(userId, rewardedItemIds);
 
     await expect(
       WeeklyGoalsService.claimWeeklyDirective(
         userId,
         {
-          directiveKey: 'directive-materials-1500',
+          directiveKey: CLAIM_DIRECTIVE_KEY,
           weekStart: goals.weekStart,
         },
         { simulateFailureAfterLedgerWrite: true },
@@ -155,10 +259,13 @@ describe('WeeklyGoalsService persistent directives (integration)', () => {
     const claimLedgerRows = await db.currencyLedger.findMany({
       where: {
         userId,
-        referenceId: 'weekly-directive:directive-materials-1500:2026-04-13:claim',
+        referenceId: CLAIM_REFERENCE_ID,
       },
     });
     expect(claimLedgerRows).toHaveLength(0);
+
+    const inventoryAfterFailure = await getInventoryQuantities(userId, rewardedItemIds);
+    expect(inventoryAfterFailure).toEqual(inventoryBeforeFailure);
 
     const progression = await db.userProgression.findUnique({ where: { userId } });
     expect(progression?.currentXp).toBe(0);
@@ -168,7 +275,7 @@ describe('WeeklyGoalsService persistent directives (integration)', () => {
       where: {
         userId_directiveKey_weekStart: {
           userId,
-          directiveKey: 'directive-materials-1500',
+          directiveKey: CLAIM_DIRECTIVE_KEY,
           weekStart: new Date(goals.weekStart),
         },
       },

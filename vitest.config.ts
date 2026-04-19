@@ -16,6 +16,7 @@ export default defineConfig({
       'server/domain/**/__tests__/**/*.test.ts',
       'server/services/**/__tests__/**/*.test.ts',
       'server/auth/**/__tests__/**/*.test.ts',
+      'lib/**/__tests__/**/*.test.ts',
     ],
     exclude: ['server/__tests__/**'],
   },

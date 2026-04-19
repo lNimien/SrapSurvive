@@ -13,6 +13,11 @@ export interface ExtractionStatusAggregateRow {
   count: number;
 }
 
+export interface AuditLogWindowRow {
+  createdAt: Date;
+  payload: unknown;
+}
+
 export const EconomyObservabilityRepository = {
   async getLedgerEntryAggregates(since: Date): Promise<LedgerEntryAggregateRow[]> {
     const groupedRows = await db.currencyLedger.groupBy({
@@ -86,5 +91,23 @@ export const EconomyObservabilityRepository = {
     });
 
     return users.map((user) => user.userId);
+  },
+
+  async getAuditLogsByActionSince(action: string, since: Date): Promise<AuditLogWindowRow[]> {
+    return db.auditLog.findMany({
+      where: {
+        action,
+        createdAt: {
+          gte: since,
+        },
+      },
+      select: {
+        createdAt: true,
+        payload: true,
+      },
+      orderBy: {
+        createdAt: 'asc',
+      },
+    });
   },
 };

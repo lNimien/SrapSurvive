@@ -71,11 +71,49 @@ describe('WeeklyGoalsService - unit aggregation', () => {
     expect(normalizeWeeklyDirectiveReward({ rewardCC: 9999, rewardXP: 9999 })).toEqual({
       rewardCC: 750,
       rewardXP: 320,
+      rewardItems: [],
     });
 
     expect(normalizeWeeklyDirectiveReward({ rewardCC: 1, rewardXP: 1 })).toEqual({
       rewardCC: 25,
       rewardXP: 10,
+      rewardItems: [],
     });
+  });
+
+  it('normalizes weekly reward item payloads with conservative bounds and stable ordering', () => {
+    expect(
+      normalizeWeeklyDirectiveReward({
+        rewardCC: 200,
+        rewardXP: 90,
+        rewardItems: [
+          { itemDefId: 'energy_cell', quantity: 8.9 },
+          { itemDefId: 'invalid_item', quantity: 9999 },
+          { itemDefId: 'scrap_metal', quantity: 0 },
+          { itemDefId: 'energy_cell', quantity: 5 },
+        ],
+      }),
+    ).toEqual({
+      rewardCC: 200,
+      rewardXP: 90,
+      rewardItems: [
+        { itemDefId: 'energy_cell', quantity: 13 },
+        { itemDefId: 'scrap_metal', quantity: 1 },
+      ],
+    });
+  });
+
+  it('keeps claim resolver deterministic with item-reward directives', () => {
+    const normalizedReward = normalizeWeeklyDirectiveReward({
+      rewardCC: 120,
+      rewardXP: 45,
+      rewardItems: [{ itemDefId: 'scrap_metal', quantity: 30 }],
+    });
+
+    expect(normalizedReward.rewardItems).toHaveLength(1);
+    expect(resolveClaimAttemptOutcome({ updatedCount: 1, claimedAt: null })).toBe('CLAIMED');
+    expect(resolveClaimAttemptOutcome({ updatedCount: 0, claimedAt: new Date('2026-04-19T00:00:00.000Z') })).toBe(
+      'ALREADY_CLAIMED',
+    );
   });
 });

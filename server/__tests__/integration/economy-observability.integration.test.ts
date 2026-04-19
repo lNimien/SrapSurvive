@@ -200,5 +200,138 @@ describe('economy observability (integration)', () => {
         transactionCount: 1,
       },
     ]);
+
+    expect(telemetry.weeklyClaimsHealth.window24h.totalAttempts).toBe(0);
+    expect(telemetry.weeklyClaimsHealth.window7d.totalAttempts).toBe(0);
+  });
+
+  it('aggregates weekly claim observability metrics for 24h and 7d windows', async () => {
+    const now = new Date();
+
+    await db.auditLog.createMany({
+      data: [
+        {
+          action: 'liveops.weekly.claim_attempt',
+          payload: {
+            directiveKey: 'directive-materials-1500',
+            weekStart: '2026-04-13T00:00:00.000Z',
+            outcome: 'CLAIMED',
+            durationMs: 120,
+          },
+          createdAt: new Date(now.getTime() - 2 * 60 * 60 * 1_000),
+        },
+        {
+          action: 'liveops.weekly.claim_attempt',
+          payload: {
+            directiveKey: 'directive-materials-1500',
+            weekStart: '2026-04-13T00:00:00.000Z',
+            outcome: 'ALREADY_CLAIMED',
+            durationMs: 45,
+          },
+          createdAt: new Date(now.getTime() - 3 * 60 * 60 * 1_000),
+        },
+        {
+          action: 'liveops.weekly.claim_attempt',
+          payload: {
+            directiveKey: 'directive-zone-orbital-5',
+            weekStart: '2026-04-13T00:00:00.000Z',
+            outcome: 'NOT_CLAIMABLE',
+            durationMs: 60,
+          },
+          createdAt: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1_000),
+        },
+        {
+          action: 'liveops.weekly.claim_attempt',
+          payload: {
+            directiveKey: 'directive-earn-2500-cc',
+            weekStart: '2026-04-13T00:00:00.000Z',
+            outcome: 'FEATURE_DISABLED',
+            durationMs: 25,
+          },
+          createdAt: new Date(now.getTime() - 6 * 24 * 60 * 60 * 1_000),
+        },
+        {
+          action: 'liveops.weekly.claim_attempt',
+          payload: {
+            directiveKey: 'directive-earn-2500-cc',
+            weekStart: '2026-04-13T00:00:00.000Z',
+            outcome: 'ERROR',
+            durationMs: 300,
+          },
+          createdAt: new Date(now.getTime() - 8 * 24 * 60 * 60 * 1_000),
+        },
+      ],
+    });
+
+    await db.auditLog.createMany({
+      data: [
+        {
+          action: 'liveops.weekly.claim',
+          payload: {
+            rewardItems: [
+              { itemDefinitionId: 'scrap_metal', quantity: 80 },
+              { itemDefinitionId: 'energy_cell', quantity: 30 },
+            ],
+          },
+          createdAt: new Date(now.getTime() - 2 * 60 * 60 * 1_000),
+        },
+        {
+          action: 'liveops.weekly.claim',
+          payload: {
+            rewardItems: [{ itemDefinitionId: 'scrap_metal', quantity: 120 }],
+          },
+          createdAt: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1_000),
+        },
+        {
+          action: 'liveops.weekly.claim',
+          payload: {
+            rewardItems: [{ itemDefinitionId: 'optic_sensor', quantity: 8 }],
+          },
+          createdAt: new Date(now.getTime() - 8 * 24 * 60 * 60 * 1_000),
+        },
+      ],
+    });
+
+    const telemetry = await EconomyObservabilityService.getEconomyTelemetry({ now });
+
+    expect(telemetry.weeklyClaimsHealth.window24h).toEqual({
+      totalAttempts: 2,
+      attemptsByOutcome: {
+        CLAIMED: 1,
+        ALREADY_CLAIMED: 1,
+        NOT_CLAIMABLE: 0,
+        FEATURE_DISABLED: 0,
+        ERROR: 0,
+      },
+      successRatio: 0.5,
+      latency: {
+        p50Ms: 45,
+        p95Ms: 120,
+      },
+      itemFaucetByItemDef: [
+        { itemDefinitionId: 'scrap_metal', quantity: 80 },
+        { itemDefinitionId: 'energy_cell', quantity: 30 },
+      ],
+    });
+
+    expect(telemetry.weeklyClaimsHealth.window7d).toEqual({
+      totalAttempts: 4,
+      attemptsByOutcome: {
+        CLAIMED: 1,
+        ALREADY_CLAIMED: 1,
+        NOT_CLAIMABLE: 1,
+        FEATURE_DISABLED: 1,
+        ERROR: 0,
+      },
+      successRatio: 0.25,
+      latency: {
+        p50Ms: 45,
+        p95Ms: 120,
+      },
+      itemFaucetByItemDef: [
+        { itemDefinitionId: 'scrap_metal', quantity: 200 },
+        { itemDefinitionId: 'energy_cell', quantity: 30 },
+      ],
+    });
   });
 });

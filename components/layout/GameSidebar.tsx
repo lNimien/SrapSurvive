@@ -1,13 +1,17 @@
 import Link from 'next/link';
-import { PackageSearch, Satellite, BarChart2, Store, LogOut, Terminal, Hammer, Shield } from 'lucide-react';
+import { PackageSearch, Satellite, BarChart2, Store, LogOut, Terminal, Hammer, Shield, FileCheck2, Trophy, Cpu } from 'lucide-react';
 import { auth, signOut } from '@/server/auth/auth';
 import { isAdminUser } from '@/server/auth/admin';
+import { SidebarContextService } from '@/server/services/sidebar-context.service';
 import { Button, buttonVariants } from '../ui/button';
 import { cn } from '@/lib/utils';
 
 export async function GameSidebar() {
   const session = await auth();
   const shouldShowOpsLink = isAdminUser(session?.user?.id);
+  const sidebarContext = session?.user?.id
+    ? await SidebarContextService.getSidebarContext(session.user.id)
+    : null;
 
   return (
     <aside className="w-16 md:w-[280px] glass-panel border-r border-primary/20 flex flex-col h-screen overflow-y-auto relative z-50 shadow-[4px_0_24px_-10px_rgba(0,243,255,0.15)]">
@@ -25,6 +29,19 @@ export async function GameSidebar() {
           </span>
         </div>
       </div>
+
+      {sidebarContext && (
+        <section className="px-4 py-3 border-b border-white/5 space-y-2" aria-label="Contexto global del jugador">
+          <div className="border border-primary/20 bg-primary/5 px-3 py-2">
+            <p className="text-[10px] font-mono uppercase tracking-widest text-primary/60">Nivel</p>
+            <p className="font-mono text-base text-primary">NV {sidebarContext.level}</p>
+          </div>
+          <div className="border border-yellow-500/25 bg-yellow-500/5 px-3 py-2">
+            <p className="text-[10px] font-mono uppercase tracking-widest text-yellow-300/70">Créditos</p>
+            <p className="font-mono text-base text-yellow-300">{sidebarContext.credits} CC</p>
+          </div>
+        </section>
+      )}
 
       <nav className="flex-1 py-6 flex flex-col gap-3 px-4">
         <Link 
@@ -61,6 +78,42 @@ export async function GameSidebar() {
           <div className="absolute left-0 top-0 bottom-0 w-1 bg-orange-500 scale-y-0 group-hover:scale-y-100 transition-transform origin-top" />
           <Hammer className="w-5 h-5 text-muted-foreground group-hover:text-orange-400 transition-colors" />
           <span className="hidden md:inline font-sans uppercase tracking-widest font-semibold flex-1 text-left">Taller</span>
+        </Link>
+
+        <Link 
+          href="/contracts"
+          className={cn(
+            buttonVariants({ variant: 'ghost' }),
+            'justify-start gap-4 h-12 w-full hover:bg-cyan-500/10 hover:text-cyan-300 transition-all group relative overflow-hidden'
+          )}
+        >
+          <div className="absolute left-0 top-0 bottom-0 w-1 bg-cyan-400 scale-y-0 group-hover:scale-y-100 transition-transform origin-top" />
+          <FileCheck2 className="w-5 h-5 text-muted-foreground group-hover:text-cyan-300 transition-colors" />
+          <span className="hidden md:inline font-sans uppercase tracking-widest font-semibold flex-1 text-left">Contratos</span>
+        </Link>
+
+        <Link 
+          href="/upgrades"
+          className={cn(
+            buttonVariants({ variant: 'ghost' }),
+            'justify-start gap-4 h-12 w-full hover:bg-indigo-500/10 hover:text-indigo-300 transition-all group relative overflow-hidden'
+          )}
+        >
+          <div className="absolute left-0 top-0 bottom-0 w-1 bg-indigo-400 scale-y-0 group-hover:scale-y-100 transition-transform origin-top" />
+          <Cpu className="w-5 h-5 text-muted-foreground group-hover:text-indigo-300 transition-colors" />
+          <span className="hidden md:inline font-sans uppercase tracking-widest font-semibold flex-1 text-left">Mejoras</span>
+        </Link>
+
+        <Link 
+          href="/achievements"
+          className={cn(
+            buttonVariants({ variant: 'ghost' }),
+            'justify-start gap-4 h-12 w-full hover:bg-emerald-500/10 hover:text-emerald-300 transition-all group relative overflow-hidden'
+          )}
+        >
+          <div className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-400 scale-y-0 group-hover:scale-y-100 transition-transform origin-top" />
+          <Trophy className="w-5 h-5 text-muted-foreground group-hover:text-emerald-300 transition-colors" />
+          <span className="hidden md:inline font-sans uppercase tracking-widest font-semibold flex-1 text-left">Logros</span>
         </Link>
 
         <Link 

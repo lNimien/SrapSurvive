@@ -27,13 +27,23 @@ export const CraftingService = {
       }
 
       // 3. Check resources
-      const [inventory, latestLedger] = await Promise.all([
+      const [inventory, latestLedger, progression] = await Promise.all([
         tx.inventoryItem.findMany({ where: { userId } }),
         tx.currencyLedger.findFirst({
             where: { userId },
             orderBy: { createdAt: 'desc' }
-        })
+        }),
+        tx.userProgression.findUnique({
+          where: { userId },
+          select: { currentLevel: true },
+        }),
       ]);
+
+      const playerLevel = progression?.currentLevel ?? 1;
+      const lockReason = CraftingCalculator.getRecipeLockReason(recipe, playerLevel);
+      if (lockReason) {
+        throw new DomainError('VALIDATION_ERROR', lockReason);
+      }
 
       const currentBalance = latestLedger?.balanceAfter || 0;
       const { success, hasCC, missingMaterials } = CraftingCalculator.canAfford(recipe, inventory, currentBalance);
@@ -78,7 +88,14 @@ export const CraftingService = {
       });
 
       let craftResult;
-      if (existingResult && resultDef.stackable) {
+      if (existingResult && !resultDef.stackable) {
+        throw new DomainError(
+          'VALIDATION_ERROR',
+          `Ya posees ${resultDef.displayName}. No se puede fabricar un duplicado de este objeto.`,
+        );
+      }
+
+      if (existingResult) {
         craftResult = await tx.inventoryItem.update({
           where: { id: existingResult.id },
           data: { quantity: { increment: 1 }, acquiredAt: now }

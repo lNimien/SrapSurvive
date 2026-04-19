@@ -1,5 +1,7 @@
 import { InventoryItemDTO } from '../../types/dto.types';
 import { getPerkLines } from '@/lib/utils/item-perks';
+import { cn } from '@/lib/utils/cn';
+import { getRarityVisuals } from '@/lib/utils/rarity';
 
 interface ItemTooltipProps {
   item: InventoryItemDTO;
@@ -7,6 +9,7 @@ interface ItemTooltipProps {
 
 export function ItemTooltip({ item }: ItemTooltipProps) {
   const perks = getPerkLines(item.configOptions);
+  const rarityVisuals = getRarityVisuals(item.rarity);
 
   return (
     <div className="item-tooltip absolute z-50 min-w-[220px] rounded border border-zinc-700 bg-zinc-950 p-3 text-zinc-100 shadow-2xl pointer-events-none opacity-0 transition-opacity group-hover:opacity-100 -top-2 left-full ml-2">
@@ -18,7 +21,7 @@ export function ItemTooltip({ item }: ItemTooltipProps) {
       </div>
       <div className="grid grid-cols-2 gap-1 text-xs">
         <span className="text-zinc-400">Rareza:</span>
-        <span className={`rarity-text rarity-${item.rarity.toLowerCase()}`}>
+        <span className={cn('font-semibold', rarityVisuals.textClass)}>
           {item.rarity}
         </span>
         <span className="text-zinc-400">Valor Base:</span>

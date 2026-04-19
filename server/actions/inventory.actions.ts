@@ -25,6 +25,8 @@ import { SalvageService } from '../services/salvage.service';
 import { guardMutationCategory } from '../services/mutation-guard.service';
 import { CRAFTING_RECIPES, ITEM_CATALOG } from '../../config/game.config';
 import { Prisma } from '@prisma/client';
+import { UserRepository } from '../repositories/user.repository';
+import { CraftingCalculator } from '../domain/inventory/crafting.calculator';
 
 async function verifyActionPreconditions() {
   const session = await auth();
@@ -176,10 +178,12 @@ export async function getRecipesAction(): Promise<ActionResult<RecipeDTO[]>> {
     const userId = session?.user?.id;
     if (!userId) return { success: true, data: [] }; // No recipes for guest
 
-    const [inventory, balance] = await Promise.all([
+    const [inventory, balance, profile] = await Promise.all([
       InventoryRepository.getInventoryByUser(userId),
-      EconomyRepository.getCurrentBalance(userId)
+      EconomyRepository.getCurrentBalance(userId),
+      UserRepository.getUserProfile(userId),
     ]);
+    const playerLevel = profile?.level ?? 1;
 
     const recipeDTOs: RecipeDTO[] = CRAFTING_RECIPES.map(recipe => {
       const resultDef = ITEM_CATALOG.find(i => i.id === recipe.resultItemDefId)!;
@@ -200,9 +204,14 @@ export async function getRecipesAction(): Promise<ActionResult<RecipeDTO[]>> {
 
       const canAffordMaterials = ingredients.every(i => i.currentQuantity >= i.requiredQuantity);
       const canAffordCC = balance >= recipe.costCC;
+      const lockReason = CraftingCalculator.getRecipeLockReason(recipe, playerLevel);
 
       return {
         id: recipe.id,
+        requiredLevel: recipe.requiredLevel,
+        playerLevel,
+        isLevelLocked: lockReason !== null,
+        lockReason,
         resultItem: {
           id: resultDef.id,
           displayName: resultDef.displayName,

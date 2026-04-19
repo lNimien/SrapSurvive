@@ -116,21 +116,36 @@
         - claim bloqueado por kill-switch de claims/mejoras + smoke permitido
 
 9. **LiveOps semanal persistente (claim atómico + idempotente)**
-   - Unit:
-     - `server/services/__tests__/weekly-goals.service.test.ts`
-       - ventana semanal UTC normalizada a lunes 00:00
-       - semántica de claim idempotente (`CLAIMED` / `ALREADY_CLAIMED` / `NOT_CLAIMABLE`)
-       - bounds conservadores de rewards CC/XP
-   - Action:
-     - `server/__tests__/actions/liveops.actions.test.ts`
-       - `claimWeeklyDirectiveAction`: unauthorized, validation failure, guard-disabled
-   - Integration:
-     - `server/__tests__/integration/weekly-directives.integration.test.ts`
-       - sync inicial crea directivas persistidas por usuario+semana
-       - progreso semanal se deriva de `ExtractionResult`
-       - claim happy path aplica ledger + XP y marca claimed
-       - segundo claim es determinístico (already claimed) sin duplicar rewards
-       - rollback total en falla forzada mid-transaction
+    - Unit:
+      - `server/services/__tests__/weekly-goals.service.test.ts`
+        - ventana semanal UTC normalizada a lunes 00:00
+        - semántica de claim idempotente (`CLAIMED` / `ALREADY_CLAIMED` / `NOT_CLAIMABLE`)
+        - bounds conservadores de rewards CC/XP
+        - normalización/saneamiento de `rewardItems` (IDs válidos, cantidades, orden determinístico)
+    - Action:
+      - `server/__tests__/actions/liveops.actions.test.ts`
+        - `claimWeeklyDirectiveAction`: unauthorized, validation failure, guard-disabled
+    - Integration:
+      - `server/__tests__/integration/weekly-directives.integration.test.ts`
+        - sync inicial crea directivas persistidas por usuario+semana
+        - progreso semanal se deriva de `ExtractionResult`
+       - claim happy path aplica ledger + XP + inventory upsert de item rewards y marca claimed
+       - segundo claim es determinístico (already claimed) sin duplicar ledger/xp/items
+       - race de doble claim simultáneo: exactamente 1 settlement con rewards, segundo resultado determinístico sin duplicación
+       - rollback total en falla forzada mid-transaction (sin efectos parciales en ledger/xp/items)
+
+10. **D.4b observabilidad + hardening operativo de claims**
+    - Unit:
+      - `server/services/__tests__/economy-observability.service.test.ts`
+        - percentiles p50/p95 para latencia de claim
+        - agregación de outcomes + success ratio + faucet por itemDefId
+    - Integration:
+      - `server/__tests__/integration/economy-observability.integration.test.ts`
+        - ventanas 24h/7d para metrics de claims (`CLAIMED`, `ALREADY_CLAIMED`, `NOT_CLAIMABLE`, `FEATURE_DISABLED`, `ERROR`)
+        - cálculo de latencia p50/p95 desde auditoría de intentos
+        - faucet por itemDefId desde claims exitosos
+      - `server/__tests__/integration/weekly-directives.integration.test.ts`
+        - race concurrente de doble claim (mismo usuario/directiva/semana) sin efectos económicos duplicados
 
 ---
 

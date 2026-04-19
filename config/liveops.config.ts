@@ -1,3 +1,5 @@
+import { ITEM_CATALOG } from '@/config/game.config';
+
 export interface LiveEventDescriptor {
   id: string;
   title: string;
@@ -22,6 +24,7 @@ export interface WeeklyDirectiveDefinition {
   target: number;
   rewardCC: number;
   rewardXP: number;
+  rewardItems?: Array<{ itemDefId: string; quantity: number }>;
   zoneId?: string;
 }
 
@@ -30,9 +33,26 @@ export const WEEKLY_DIRECTIVE_REWARD_BOUNDS = {
   maxCC: 750,
   minXP: 10,
   maxXP: 320,
+  minItemQuantity: 1,
+  maxItemQuantity: 250,
+  maxRewardItemsPerDirective: 3,
 } as const;
 
-export function normalizeWeeklyDirectiveReward(reward: { rewardCC: number; rewardXP: number }) {
+const ITEM_DEFINITION_IDS = new Set(ITEM_CATALOG.map((item) => item.id));
+
+export interface WeeklyDirectiveRewardInput {
+  rewardCC: number;
+  rewardXP: number;
+  rewardItems?: Array<{ itemDefId: string; quantity: number }>;
+}
+
+export interface WeeklyDirectiveNormalizedReward {
+  rewardCC: number;
+  rewardXP: number;
+  rewardItems: Array<{ itemDefId: string; quantity: number }>;
+}
+
+export function normalizeWeeklyDirectiveReward(reward: WeeklyDirectiveRewardInput): WeeklyDirectiveNormalizedReward {
   const normalizedCC = Math.max(
     WEEKLY_DIRECTIVE_REWARD_BOUNDS.minCC,
     Math.min(WEEKLY_DIRECTIVE_REWARD_BOUNDS.maxCC, Math.floor(reward.rewardCC)),
@@ -42,9 +62,37 @@ export function normalizeWeeklyDirectiveReward(reward: { rewardCC: number; rewar
     Math.min(WEEKLY_DIRECTIVE_REWARD_BOUNDS.maxXP, Math.floor(reward.rewardXP)),
   );
 
+  const mergedRewardItems = new Map<string, number>();
+
+  for (const rewardItem of reward.rewardItems ?? []) {
+    if (!ITEM_DEFINITION_IDS.has(rewardItem.itemDefId)) {
+      continue;
+    }
+
+    const normalizedQuantity = Math.max(
+      WEEKLY_DIRECTIVE_REWARD_BOUNDS.minItemQuantity,
+      Math.min(WEEKLY_DIRECTIVE_REWARD_BOUNDS.maxItemQuantity, Math.floor(rewardItem.quantity)),
+    );
+
+    const previousQuantity = mergedRewardItems.get(rewardItem.itemDefId) ?? 0;
+    mergedRewardItems.set(rewardItem.itemDefId, previousQuantity + normalizedQuantity);
+  }
+
+  const normalizedRewardItems = [...mergedRewardItems.entries()]
+    .map(([itemDefId, quantity]) => ({
+      itemDefId,
+      quantity: Math.max(
+        WEEKLY_DIRECTIVE_REWARD_BOUNDS.minItemQuantity,
+        Math.min(WEEKLY_DIRECTIVE_REWARD_BOUNDS.maxItemQuantity, quantity),
+      ),
+    }))
+    .sort((a, b) => a.itemDefId.localeCompare(b.itemDefId))
+    .slice(0, WEEKLY_DIRECTIVE_REWARD_BOUNDS.maxRewardItemsPerDirective);
+
   return {
     rewardCC: normalizedCC,
     rewardXP: normalizedXP,
+    rewardItems: normalizedRewardItems,
   };
 }
 
@@ -67,6 +115,10 @@ export const WEEKLY_DIRECTIVES: WeeklyDirectiveDefinition[] = [
     target: 12,
     rewardCC: 150,
     rewardXP: 60,
+    rewardItems: [
+      { itemDefId: 'scrap_metal', quantity: 120 },
+      { itemDefId: 'energy_cell', quantity: 24 },
+    ],
   },
   {
     id: 'directive-survive-3-catastrophes',
@@ -76,6 +128,7 @@ export const WEEKLY_DIRECTIVES: WeeklyDirectiveDefinition[] = [
     target: 3,
     rewardCC: 220,
     rewardXP: 80,
+    rewardItems: [{ itemDefId: 'armor_fiber', quantity: 20 }],
   },
   {
     id: 'directive-zone-orbital-5',
@@ -86,6 +139,7 @@ export const WEEKLY_DIRECTIVES: WeeklyDirectiveDefinition[] = [
     target: 5,
     rewardCC: 260,
     rewardXP: 95,
+    rewardItems: [{ itemDefId: 'recycled_component', quantity: 30 }],
   },
   {
     id: 'directive-materials-1500',
@@ -95,6 +149,10 @@ export const WEEKLY_DIRECTIVES: WeeklyDirectiveDefinition[] = [
     target: 1500,
     rewardCC: 180,
     rewardXP: 70,
+    rewardItems: [
+      { itemDefId: 'scrap_metal', quantity: 80 },
+      { itemDefId: 'energy_cell', quantity: 30 },
+    ],
   },
   {
     id: 'directive-earn-2500-cc',
@@ -104,5 +162,6 @@ export const WEEKLY_DIRECTIVES: WeeklyDirectiveDefinition[] = [
     target: 2500,
     rewardCC: 300,
     rewardXP: 110,
+    rewardItems: [{ itemDefId: 'optic_sensor', quantity: 8 }],
   },
 ];

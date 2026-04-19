@@ -488,6 +488,7 @@ export const CRAFTING_RECIPES: Recipe[] = [
   {
     id: "recipe_backpack_advanced",
     resultItemDefId: "backpack_advanced_expedition",
+    requiredLevel: 3,
     requiredMaterials: [
       { itemDefId: "armor_fiber", quantity: 4 },
       { itemDefId: "alien_resin", quantity: 1 },
@@ -498,6 +499,7 @@ export const CRAFTING_RECIPES: Recipe[] = [
   {
     id: "recipe_tool_precision",
     resultItemDefId: "tool_nanofiber_precision",
+    requiredLevel: 5,
     requiredMaterials: [
       { itemDefId: "optic_sensor", quantity: 2 },
       { itemDefId: "plasma_core", quantity: 1 },
@@ -508,6 +510,7 @@ export const CRAFTING_RECIPES: Recipe[] = [
   {
     id: "recipe_helmet_explorer",
     resultItemDefId: "helmet_explorer_sensor",
+    requiredLevel: 4,
     requiredMaterials: [
       { itemDefId: "optic_sensor", quantity: 2 },
       { itemDefId: "recycled_component", quantity: 4 },
@@ -518,6 +521,7 @@ export const CRAFTING_RECIPES: Recipe[] = [
   {
     id: "recipe_chronoguide_array",
     resultItemDefId: "helmet_chronoguide_array",
+    requiredLevel: 10,
     requiredMaterials: [
       { itemDefId: "optic_sensor", quantity: 3 },
       { itemDefId: "quantum_filament", quantity: 2 },
@@ -529,6 +533,7 @@ export const CRAFTING_RECIPES: Recipe[] = [
   {
     id: "recipe_voidharden_shell",
     resultItemDefId: "suit_voidharden_shell",
+    requiredLevel: 11,
     requiredMaterials: [
       { itemDefId: "armor_fiber", quantity: 8 },
       { itemDefId: "alien_resin", quantity: 3 },
@@ -540,6 +545,7 @@ export const CRAFTING_RECIPES: Recipe[] = [
   {
     id: "recipe_singularity_harvester",
     resultItemDefId: "tool_singularity_harvester",
+    requiredLevel: 12,
     requiredMaterials: [
       { itemDefId: "plasma_core", quantity: 2 },
       { itemDefId: "quantum_filament", quantity: 3 },
@@ -551,6 +557,7 @@ export const CRAFTING_RECIPES: Recipe[] = [
   {
     id: "recipe_event_horizon_backpack",
     resultItemDefId: "backpack_event_horizon",
+    requiredLevel: 11,
     requiredMaterials: [
       { itemDefId: "armor_fiber", quantity: 6 },
       { itemDefId: "quantum_filament", quantity: 2 },
@@ -562,6 +569,7 @@ export const CRAFTING_RECIPES: Recipe[] = [
   {
     id: 'recipe_hazard_predictor',
     resultItemDefId: 'helmet_hazard_predictor',
+    requiredLevel: 8,
     requiredMaterials: [
       { itemDefId: 'optic_sensor', quantity: 4 },
       { itemDefId: 'quantum_filament', quantity: 2 },
@@ -573,6 +581,7 @@ export const CRAFTING_RECIPES: Recipe[] = [
   {
     id: 'recipe_reactive_bulkframe',
     resultItemDefId: 'suit_reactive_bulkframe',
+    requiredLevel: 9,
     requiredMaterials: [
       { itemDefId: 'armor_fiber', quantity: 10 },
       { itemDefId: 'void_alloy', quantity: 2 },
@@ -584,6 +593,7 @@ export const CRAFTING_RECIPES: Recipe[] = [
   {
     id: 'recipe_flux_stabilizer_gloves',
     resultItemDefId: 'gloves_flux_stabilizer',
+    requiredLevel: 6,
     requiredMaterials: [
       { itemDefId: 'armor_fiber', quantity: 5 },
       { itemDefId: 'energy_cell', quantity: 10 },
@@ -595,6 +605,7 @@ export const CRAFTING_RECIPES: Recipe[] = [
   {
     id: 'recipe_resonance_scanner',
     resultItemDefId: 'tool_resonance_scanner',
+    requiredLevel: 9,
     requiredMaterials: [
       { itemDefId: 'optic_sensor', quantity: 3 },
       { itemDefId: 'quantum_filament', quantity: 3 },

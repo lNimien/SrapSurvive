@@ -6,6 +6,7 @@ import { EquipmentSlotKey } from '../../types/game.types';
 import { Card, CardContent, CardFooter } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { SalvageButton } from './SalvageButton';
+import { getRarityVisuals } from '@/lib/utils/rarity';
 
 interface InventorySlotProps {
   item: InventoryItemDTO;
@@ -17,10 +18,10 @@ export function InventorySlot({ item, isEquipped, isRunActive = false }: Invento
   // Encontrar el slot válido del catálogo
   const catalogDef = ITEM_CATALOG.find((catItem) => catItem.id === item.itemDefinitionId);
   const equipSlot = catalogDef?.equipmentSlot as EquipmentSlotKey | undefined;
-  const rarityColorClass = `rarity-border-${item.rarity.toLowerCase()}`;
+  const rarityVisuals = getRarityVisuals(item.rarity);
 
   return (
-    <Card className={`group relative flex flex-col items-center justify-between overflow-visible glass-panel border-t-2 ${rarityColorClass} transition-all hover:scale-[1.02] hover:shadow-[0_0_15px_rgba(0,243,255,0.2)] cyberpunk-box`}>
+    <Card className={`group relative flex flex-col items-center justify-between overflow-visible glass-panel border-l-4 ${rarityVisuals.borderClass} ${rarityVisuals.bgClass} transition-all hover:scale-[1.02] hover:shadow-[0_0_15px_rgba(0,243,255,0.2)] cyberpunk-box`}>
       
       <CardContent className="p-4 pt-4 flex flex-col items-center w-full">
         {/* Icono + Cantidad */}

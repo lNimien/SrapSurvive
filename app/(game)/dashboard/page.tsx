@@ -5,9 +5,6 @@ import { ScrapperCard } from '@/components/game/ScrapperCard';
 import { ResourceBar } from '@/components/game/ResourceBar';
 import { EquipmentDisplay } from '@/components/game/EquipmentDisplay';
 import { ExpeditionManager } from '@/components/game/ExpeditionManager';
-import { ContractsPanel } from '@/components/game/ContractsPanel';
-import { UpgradesPanel } from '@/components/game/UpgradesPanel';
-import { AchievementsPanel } from '@/components/game/AchievementsPanel';
 import { Separator } from '@/components/ui/separator';
 import { featureFlags } from '@/config/feature-flags.config';
 import { WeeklyGoalsPanel } from '@/components/game/WeeklyGoalsPanel';
@@ -54,14 +51,9 @@ export default async function DashboardPage() {
           <ExpeditionManager activeRun={player.activeRun} playerLevel={player.level} />
         </section>
 
-        <section className="lg:col-span-8 flex flex-col gap-6" aria-label="Contratos y progreso operativo">
-          <ContractsPanel contracts={player.contracts} />
-
+        <section className="lg:col-span-8 flex flex-col gap-6" aria-label="Eventos y telemetría semanal">
           {featureFlags.d3WeeklyGoals && <WeeklyGoalsPanel weeklyGoals={player.weeklyGoals} />}
-
           {featureFlags.d3PlayerAnalytics && <PlayerAnalyticsPanel analytics={player.analytics} />}
-
-          <UpgradesPanel upgrades={player.upgrades} />
         </section>
 
         <aside className="lg:col-span-4 flex flex-col gap-6" aria-label="Perfil del chatarrero">
@@ -78,7 +70,6 @@ export default async function DashboardPage() {
             activeSynergies={featureFlags.d3BuildSynergies ? player.activeSynergies : []}
             activeArchetype={featureFlags.d3BuildSynergies ? player.activeArchetype : null}
           />
-          <AchievementsPanel achievements={player.achievements} />
         </aside>
       </div>
     </main>

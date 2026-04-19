@@ -129,4 +129,49 @@ describe('economy actions validation/auth guards', () => {
     expect(result.success).toBe(true);
     expect(vi.mocked(db.$transaction)).toHaveBeenCalledTimes(1);
   });
+
+  it('sellItemsAction propagates UI quantity to ledger and inventory mutation', async () => {
+    vi.mocked(auth).mockResolvedValue({ user: { id: 'user-market' } } as never);
+
+    const tx = {
+      inventoryItem: {
+        findFirst: vi.fn().mockResolvedValue({ id: 'inv_1', quantity: 5 }),
+        update: vi.fn().mockResolvedValue(undefined),
+        delete: vi.fn().mockResolvedValue(undefined),
+      },
+      currencyLedger: {
+        findFirst: vi.fn().mockResolvedValue({ balanceAfter: 40 }),
+        create: vi.fn().mockResolvedValue(undefined),
+      },
+      auditLog: {
+        create: vi.fn().mockResolvedValue(undefined),
+      },
+    };
+
+    vi.mocked(db.$transaction).mockImplementation(async (callback: any) => callback(tx as any));
+
+    const result = await sellItemsAction({
+      itemDefinitionId: 'scrap_metal',
+      amountToSell: 3,
+    });
+
+    expect(result.success).toBe(true);
+    expect(tx.inventoryItem.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { quantity: { decrement: 3 } },
+      }),
+    );
+    expect(tx.currencyLedger.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ referenceId: 'sell_scrap_metal_3' }),
+      }),
+    );
+    expect(tx.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          payload: expect.objectContaining({ amountToSell: 3 }),
+        }),
+      }),
+    );
+  });
 });

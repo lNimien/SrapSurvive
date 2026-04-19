@@ -21,6 +21,16 @@ export function WeeklyGoalsPanel({ weeklyGoals }: WeeklyGoalsPanelProps) {
 
   const claimableCount = weeklyGoals.directives.filter((directive) => directive.claimable).length;
 
+  const formatRewardItems = (
+    rewardItems: Array<{ displayName: string; quantity: number }>,
+  ): string => {
+    if (rewardItems.length === 0) {
+      return '';
+    }
+
+    return rewardItems.map((item) => `+${item.quantity} ${item.displayName}`).join(', ');
+  };
+
   const handleClaimDirective = async (directiveKey: string) => {
     setLoadingDirectiveKey(directiveKey);
 
@@ -35,7 +45,12 @@ export function WeeklyGoalsPanel({ weeklyGoals }: WeeklyGoalsPanelProps) {
           title: result.data.alreadyClaimed ? 'Recompensa ya reclamada' : 'Directiva reclamada',
           description: result.data.alreadyClaimed
             ? 'Este objetivo semanal ya estaba reclamado. No se aplicaron cambios duplicados.'
-            : `+${result.data.rewardCC} CC y +${result.data.rewardXP} XP aplicados.`,
+            : [
+                `+${result.data.rewardCC} CC y +${result.data.rewardXP} XP aplicados.`,
+                formatRewardItems(result.data.rewardItems),
+              ]
+                .filter(Boolean)
+                .join(' '),
         });
       } else {
         toast({
@@ -102,6 +117,21 @@ export function WeeklyGoalsPanel({ weeklyGoals }: WeeklyGoalsPanelProps) {
                   {stateLabel}
                 </Badge>
               </div>
+              {directive.rewardItems.length > 0 && (
+                <ul
+                  className="mt-1 space-y-1"
+                  aria-label={`Recompensas de objetos para ${directive.title}`}
+                >
+                  {directive.rewardItems.map((rewardItem) => (
+                    <li
+                      key={`${directive.id}-${rewardItem.itemDefinitionId}`}
+                      className="text-[11px] text-cyan-200"
+                    >
+                      +{rewardItem.quantity} {rewardItem.displayName}
+                    </li>
+                  ))}
+                </ul>
+              )}
               <Progress
                 value={progressPercent}
                 className="mt-2 h-2 border border-primary/20 bg-primary/10"

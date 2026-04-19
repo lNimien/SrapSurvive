@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { RunStateDTO } from '../types/dto.types';
+import { interpolateDangerLevel } from '@/lib/utils/danger-interpolation';
 
 export function useRunPolling(initialState: RunStateDTO) {
   const [runState, setRunState] = useState<RunStateDTO>(initialState);
@@ -33,6 +34,41 @@ export function useRunPolling(initialState: RunStateDTO) {
   }, [runState.status]);
 
   return runState;
+}
+
+export function useDangerInterpolation(runState: RunStateDTO) {
+  const [visualDanger, setVisualDanger] = useState(runState.dangerLevel ?? 0);
+  const [previousSnapshot, setPreviousSnapshot] = useState<RunStateDTO | null>(null);
+  const [snapshotCapturedAtMs, setSnapshotCapturedAtMs] = useState<number>(Date.now());
+  const lastSnapshotRef = useRef<RunStateDTO | null>(null);
+
+  useEffect(() => {
+    setPreviousSnapshot(lastSnapshotRef.current ? { ...lastSnapshotRef.current } : null);
+    lastSnapshotRef.current = runState;
+    setSnapshotCapturedAtMs(Date.now());
+    setVisualDanger(runState.dangerLevel ?? 0);
+  }, [runState]);
+
+  useEffect(() => {
+    if (runState.status !== 'running' && runState.status !== 'catastrophe') {
+      return;
+    }
+
+    const intervalId = setInterval(() => {
+      setVisualDanger(
+        interpolateDangerLevel({
+          currentSnapshot: runState,
+          previousSnapshot,
+          nowMs: Date.now(),
+          snapshotCapturedAtMs,
+        }),
+      );
+    }, 250);
+
+    return () => clearInterval(intervalId);
+  }, [previousSnapshot, runState, snapshotCapturedAtMs]);
+
+  return visualDanger;
 }
 
 // Opcional recomendado: useCountdown

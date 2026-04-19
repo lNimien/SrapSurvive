@@ -256,4 +256,72 @@ describe('CraftingService.craftItem (integration)', () => {
     });
     expect(craftedItem).toBeNull();
   });
+
+  it('blocks crafting when player level is below recipe requiredLevel', async () => {
+    const userId = 'user-crafting-level-locked';
+    const recipe = CRAFTING_RECIPES.find((entry) => entry.id === 'recipe_resonance_scanner');
+
+    if (!recipe) {
+      throw new Error('Expected recipe_resonance_scanner in CRAFTING_RECIPES.');
+    }
+
+    await seedTestUser(userId);
+    await db.userProgression.update({
+      where: { userId },
+      data: { currentLevel: recipe.requiredLevel - 1 },
+    });
+    await grantCredits(userId, recipe.costCC + 20);
+
+    for (const ingredient of recipe.requiredMaterials) {
+      await db.inventoryItem.create({
+        data: {
+          userId,
+          itemDefinitionId: ingredient.itemDefId,
+          quantity: ingredient.quantity,
+        },
+      });
+    }
+
+    await expect(CraftingService.craftItem(userId, recipe.id)).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+    });
+
+    const craftedItem = await db.inventoryItem.findUnique({
+      where: {
+        userId_itemDefinitionId: {
+          userId,
+          itemDefinitionId: recipe.resultItemDefId,
+        },
+      },
+    });
+    expect(craftedItem).toBeNull();
+  });
+
+  it('allows crafting when player level reaches recipe requiredLevel', async () => {
+    const userId = 'user-crafting-level-open';
+    const recipe = CRAFTING_RECIPES.find((entry) => entry.id === 'recipe_flux_stabilizer_gloves');
+
+    if (!recipe) {
+      throw new Error('Expected recipe_flux_stabilizer_gloves in CRAFTING_RECIPES.');
+    }
+
+    await seedTestUser(userId);
+    await db.userProgression.update({
+      where: { userId },
+      data: { currentLevel: recipe.requiredLevel },
+    });
+    await grantCredits(userId, recipe.costCC);
+
+    for (const ingredient of recipe.requiredMaterials) {
+      await db.inventoryItem.create({
+        data: {
+          userId,
+          itemDefinitionId: ingredient.itemDefId,
+          quantity: ingredient.quantity,
+        },
+      });
+    }
+
+    await expect(CraftingService.craftItem(userId, recipe.id)).resolves.toBeTruthy();
+  });
 });

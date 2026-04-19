@@ -1,6 +1,6 @@
 # Plan de Fase D — Profundidad de Contenido + Escalado Operacional
 
-**Estado:** D.1 implementado · D.2 implementado (gameplay/economía/UI) · D.3.1/D.3.2/D.3.3 (slice low-churn) implementados · D.3b pendiente  
+**Estado:** D.1 implementado · D.2 implementado (gameplay/economía/UI) · D.3.1/D.3.2/D.3.3 implementados · D.3b implementado · D.4a implementado · D.4b implementado  
 **Fecha:** 2026-04-19  
 **Scope:** Diseño de ejecución para escalar contenido, economía y operación sin degradar integridad
 
@@ -98,7 +98,7 @@ Introducir decisiones de riesgo explícitas por modo de run y consolidar UX de e
 
 ## D.3 — Operación continua y gobierno de balance
 
-**Estado:** 🟡 Parcial (D.3.1 + D.3.2 + D.3.3 low-churn)
+**Estado:** ✅ Implementado (D.3.1 + D.3.2 + D.3.3)
 
 ### Objetivo
 
@@ -121,18 +121,29 @@ Operar el juego como servicio con ajustes seguros de balance y respuesta rápida
    - Uso de `ExtractionResult` + `AuditLog(run.start)` para mix SAFE/HARD.
    - Panel nuevo en dashboard detrás de feature flag.
 
-### D.3b — pendiente
+### D.3b — implementado
 
-- Playbooks formales de ajuste económico por cohorte con límites por release.
-- Protocolo operativo completo de incident response/rollback económico con drills recurrentes.
-- Gobierno de balance con cadencia semanal/quincenal y cierre formal de loop (runbook + postmortem versionado).
+- Runbooks formales de ajuste económico por cohorte con límites por release (`docs/balance-runbook.md`).
+- Protocolo operativo de incident response/rollback económico con plantilla versionada (`docs/postmortem-template.md`).
+- Gobierno de balance con cadencia operativa y checklist de activación de kill-switch.
 
-### Plan concreto D.3b (posterior a este slice)
+### D.4a — implementado
 
-1. Runbooks de balance por cohorte con límites de cambio por release.
-2. Procedimiento de kill-switch económico con validación recurrente en staging.
-3. Cadencia de revisión semanal/quincenal de fuentes/sinks, concentración de riqueza y anomalías.
-4. Protocolo de postmortem para incidentes económicos con acciones preventivas versionadas.
+- Kill-switches por categoría de mutación en acciones críticas (extracción/mercado/crafting/contracts/claims).
+- Claim semanal transaccional con rewards extendidas (CC + XP + ítems) e idempotencia.
+- Cobertura action/integration para rutas bloqueadas y permitidas bajo guards.
+
+### D.4b — implementado
+
+1. Observabilidad operativa de claims LiveOps en `/ops`:
+   - attempts por outcome (`CLAIMED`, `ALREADY_CLAIMED`, `NOT_CLAIMABLE`, `FEATURE_DISABLED`, `ERROR`),
+   - ratio de éxito 24h/7d,
+   - latencia p50/p95 (aprox. por `durationMs` auditado por intento),
+   - faucet de ítems por `itemDefId` en ventanas 24h/7d.
+2. Hardening de concurrencia:
+   - integration test de doble claim simultáneo con invariantes de no-duplicación (ledger/xp/inventory).
+3. Workflow operativo:
+   - runbook dedicado `docs/weekly-claims-incident-runbook.md` con señales, mitigación inmediata, queries SQL y checklist de recuperación/comunicación.
 
 ### Restricciones
 

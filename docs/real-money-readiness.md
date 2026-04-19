@@ -15,6 +15,11 @@
 
 > Nota: estos entregables habilitan operación más segura hacia real-money readiness, pero **no** sustituyen compliance legal ni conciliación financiera automatizada.
 
+## Estado D.4 (Mutation Guards) — parcial
+
+- ✅ D.4a implementado: kill-switches por categoría de mutación y contrato uniforme `FEATURE_DISABLED`.
+- 🔲 D.4b pendiente: observabilidad operativa de claims liveops + alerting de outliers de faucet.
+
 ---
 
 ## 1) Principios de monetización (fair, non-P2W)

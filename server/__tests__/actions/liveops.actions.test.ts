@@ -13,7 +13,9 @@ vi.mock('next/cache', () => ({
 vi.mock('@/server/services/weekly-goals.service', () => ({
   WeeklyGoalsService: {
     claimWeeklyDirective: vi.fn(),
+    trackClaimAttempt: vi.fn(),
   },
+  WEEKLY_CLAIM_NOT_CLAIMABLE_MESSAGE: 'La directiva semanal todavía no es reclamable.',
 }));
 
 import { auth } from '@/server/auth/auth';

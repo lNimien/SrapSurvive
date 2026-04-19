@@ -165,7 +165,15 @@ export interface WeeklyDirectiveDTO {
   claimed: boolean;
   rewardCC: number;
   rewardXP: number;
+  rewardItems: WeeklyRewardItemDTO[];
   claimedAt: string | null;
+}
+
+export interface WeeklyRewardItemDTO {
+  itemDefinitionId: string;
+  displayName: string;
+  iconKey: string;
+  quantity: number;
 }
 
 export interface WeeklyGoalsDTO {
@@ -180,6 +188,7 @@ export interface WeeklyDirectiveClaimResultDTO {
   weekStart: string;
   rewardCC: number;
   rewardXP: number;
+  rewardItems: WeeklyRewardItemDTO[];
   newBalance: number;
   newLevel: number;
   currentXp: number;
@@ -275,6 +284,10 @@ export interface RecipeIngredientDTO {
 
 export interface RecipeDTO {
   id: string;
+  requiredLevel: number;
+  playerLevel: number;
+  isLevelLocked: boolean;
+  lockReason: string | null;
   resultItem: {
     id: string;
     displayName: string;

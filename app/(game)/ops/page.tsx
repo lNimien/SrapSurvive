@@ -18,6 +18,26 @@ function formatNumber(value: number): string {
   return new Intl.NumberFormat('es-ES').format(value);
 }
 
+function formatPercent(value: number): string {
+  return `${(value * 100).toFixed(1)}%`;
+}
+
+function formatLatency(value: number | null): string {
+  if (value === null) {
+    return '—';
+  }
+
+  return `${formatNumber(value)} ms`;
+}
+
+const WEEKLY_CLAIM_OUTCOME_LABELS = {
+  CLAIMED: 'Claimed',
+  ALREADY_CLAIMED: 'Already Claimed',
+  NOT_CLAIMABLE: 'Not Claimable',
+  FEATURE_DISABLED: 'Feature Disabled',
+  ERROR: 'Error',
+} as const;
+
 function statusLabel(status: 'healthy' | 'warning' | 'critical'): string {
   if (status === 'healthy') {
     return 'Saludable';
@@ -260,6 +280,127 @@ export default async function OpsPage() {
                 </li>
               ))}
             </ul>
+          </CardContent>
+        </Card>
+      </section>
+
+      <section className="space-y-4" aria-label="Salud operativa de weekly claims">
+        <Card className="border-primary/30">
+          <CardHeader>
+            <CardTitle className="uppercase tracking-wider">Weekly Claims Health</CardTitle>
+            <CardDescription>
+              Observabilidad D.4b para claims semanales: volumen por outcome, ratio de éxito, latencia y faucet por item.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <div className="rounded-md border border-border/60 bg-background/70 p-4">
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Ventana 24h</p>
+                <p className="mt-2 text-lg font-semibold">{formatPercent(telemetry.weeklyClaimsHealth.window24h.successRatio)}</p>
+                <p className="text-xs text-muted-foreground">Ratio de éxito de claims</p>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                  <div className="rounded border border-border/60 p-2">
+                    <p className="text-muted-foreground">p50</p>
+                    <p className="font-semibold">{formatLatency(telemetry.weeklyClaimsHealth.window24h.latency.p50Ms)}</p>
+                  </div>
+                  <div className="rounded border border-border/60 p-2">
+                    <p className="text-muted-foreground">p95</p>
+                    <p className="font-semibold">{formatLatency(telemetry.weeklyClaimsHealth.window24h.latency.p95Ms)}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-md border border-border/60 bg-background/70 p-4">
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Ventana 7d</p>
+                <p className="mt-2 text-lg font-semibold">{formatPercent(telemetry.weeklyClaimsHealth.window7d.successRatio)}</p>
+                <p className="text-xs text-muted-foreground">Ratio de éxito de claims</p>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                  <div className="rounded border border-border/60 p-2">
+                    <p className="text-muted-foreground">p50</p>
+                    <p className="font-semibold">{formatLatency(telemetry.weeklyClaimsHealth.window7d.latency.p50Ms)}</p>
+                  </div>
+                  <div className="rounded border border-border/60 p-2">
+                    <p className="text-muted-foreground">p95</p>
+                    <p className="font-semibold">{formatLatency(telemetry.weeklyClaimsHealth.window7d.latency.p95Ms)}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto rounded-md border border-border/60">
+              <table className="w-full min-w-[520px] text-sm">
+                <caption className="sr-only">Conteo de intentos de claim por outcome en ventanas de 24h y 7d.</caption>
+                <thead className="bg-muted/30 text-xs uppercase tracking-wider text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2 text-left">Outcome</th>
+                    <th className="px-3 py-2 text-right">24h</th>
+                    <th className="px-3 py-2 text-right">7d</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(WEEKLY_CLAIM_OUTCOME_LABELS).map(([outcome, label]) => (
+                    <tr key={outcome} className="border-t border-border/60">
+                      <td className="px-3 py-2 font-mono text-xs uppercase tracking-wide">{label}</td>
+                      <td className="px-3 py-2 text-right font-semibold">
+                        {
+                          telemetry.weeklyClaimsHealth.window24h.attemptsByOutcome[
+                            outcome as keyof typeof telemetry.weeklyClaimsHealth.window24h.attemptsByOutcome
+                          ]
+                        }
+                      </td>
+                      <td className="px-3 py-2 text-right font-semibold">
+                        {
+                          telemetry.weeklyClaimsHealth.window7d.attemptsByOutcome[
+                            outcome as keyof typeof telemetry.weeklyClaimsHealth.window7d.attemptsByOutcome
+                          ]
+                        }
+                      </td>
+                    </tr>
+                  ))}
+                  <tr className="border-t border-border/60 bg-muted/20">
+                    <td className="px-3 py-2 font-semibold">Total attempts</td>
+                    <td className="px-3 py-2 text-right font-semibold">
+                      {telemetry.weeklyClaimsHealth.window24h.totalAttempts}
+                    </td>
+                    <td className="px-3 py-2 text-right font-semibold">
+                      {telemetry.weeklyClaimsHealth.window7d.totalAttempts}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <div className="rounded-md border border-border/60 bg-background/70 p-4">
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Item faucet semanal — 24h</p>
+                <ul className="mt-2 space-y-2 text-sm">
+                  {telemetry.weeklyClaimsHealth.window24h.itemFaucetByItemDef.length === 0 && (
+                    <li className="text-muted-foreground">Sin ítems otorgados por claims en 24h.</li>
+                  )}
+                  {telemetry.weeklyClaimsHealth.window24h.itemFaucetByItemDef.map((item) => (
+                    <li key={`24h-${item.itemDefinitionId}`} className="flex items-center justify-between rounded border border-border/60 p-2">
+                      <span className="font-mono text-xs">{item.itemDefinitionId}</span>
+                      <span className="font-semibold">+{formatNumber(item.quantity)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="rounded-md border border-border/60 bg-background/70 p-4">
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Item faucet semanal — 7d</p>
+                <ul className="mt-2 space-y-2 text-sm">
+                  {telemetry.weeklyClaimsHealth.window7d.itemFaucetByItemDef.length === 0 && (
+                    <li className="text-muted-foreground">Sin ítems otorgados por claims en 7d.</li>
+                  )}
+                  {telemetry.weeklyClaimsHealth.window7d.itemFaucetByItemDef.map((item) => (
+                    <li key={`7d-${item.itemDefinitionId}`} className="flex items-center justify-between rounded border border-border/60 p-2">
+                      <span className="font-mono text-xs">{item.itemDefinitionId}</span>
+                      <span className="font-semibold">+{formatNumber(item.quantity)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
           </CardContent>
         </Card>
       </section>

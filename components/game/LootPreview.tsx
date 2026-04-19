@@ -1,4 +1,6 @@
 import { PendingLootDTO } from '../../types/dto.types';
+import { cn } from '@/lib/utils/cn';
+import { getRarityVisuals } from '@/lib/utils/rarity';
 
 interface LootPreviewProps {
   loot?: PendingLootDTO[];
@@ -15,17 +17,21 @@ export function LootPreview({ loot }: LootPreviewProps) {
 
   return (
     <ul className="grid grid-cols-2 gap-2 text-sm font-mono mt-2">
-      {loot.map((item) => (
+      {loot.map((item) => {
+        const rarityVisuals = getRarityVisuals(item.rarity);
+
+        return (
         <li 
           key={item.itemId} 
-          className="flex justify-between items-center bg-gray-800/80 px-3 py-1.5 rounded border border-gray-700/50"
+          className={cn('flex justify-between items-center px-3 py-1.5 rounded border border-gray-700/50', rarityVisuals.bgClass)}
         >
-          <span className={`rarity-text rarity-${item.rarity.toLowerCase()}`}>
+          <span className={cn('font-semibold', rarityVisuals.textClass)}>
              {item.displayName}
           </span>
           <span className="text-gray-300 font-bold">~{item.quantity}</span>
         </li>
-      ))}
+        );
+      })}
     </ul>
   );
 }
