@@ -4,18 +4,12 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { getPerkLines } from '@/lib/utils/item-perks';
 import { cn } from '@/lib/utils/cn';
 import { Badge } from '../ui/badge';
-
-const SLOT_LAYOUT: Array<{ key: keyof EquipmentDTO; label: string; hint: string }> = [
-  { key: 'HEAD', label: 'Casco', hint: 'Sensores y protección frontal' },
-  { key: 'BODY', label: 'Armadura', hint: 'Protección principal del torso' },
-  { key: 'HANDS', label: 'Guantes', hint: 'Control de precisión y extracción' },
-  { key: 'TOOL_PRIMARY', label: 'Herramienta primaria', hint: 'Herramienta activa de run' },
-  { key: 'TOOL_SECONDARY', label: 'Herramienta secundaria', hint: 'Soporte técnico de emergencia' },
-  { key: 'BACKPACK', label: 'Mochila', hint: 'Capacidad y almacenamiento' },
-];
+import { EQUIPMENT_SLOT_LAYOUT } from '@/config/equipment-slots.config';
+import { getRarityVisuals, getTierLabel } from '@/lib/utils/rarity';
 
 function SlotChip({ label, item, hint }: { label: string; item: InventoryItemDTO | null; hint: string }) {
   const perkLines = getPerkLines(item?.configOptions);
+  const rarityVisuals = item ? getRarityVisuals(item.rarity) : null;
 
   return (
     <Tooltip>
@@ -36,7 +30,9 @@ function SlotChip({ label, item, hint }: { label: string; item: InventoryItemDTO
         <p className="text-[11px] text-muted-foreground">{item?.description ?? hint}</p>
         {item && (
           <>
-            <p className="mt-1 text-[10px] uppercase tracking-widest text-amber-300">{item.rarity}</p>
+            <p className={cn('mt-1 text-[10px] uppercase tracking-widest', rarityVisuals?.textClass)}>
+              {getTierLabel(item.rarity)}
+            </p>
             <ul className="mt-2 space-y-1 text-[11px]">
               {perkLines.length > 0 ? (
                 perkLines.map((perk) => <li key={perk}>• {perk}</li>)
@@ -67,7 +63,7 @@ export function EquipmentDisplay({ equipment, activeSynergies = [], activeArchet
       </div>
       <CardContent className="p-4">
         <div className="grid grid-cols-1 gap-3" role="list" aria-label="Loadout vertical del personaje">
-          {SLOT_LAYOUT.map(({ key, label, hint }) => (
+          {EQUIPMENT_SLOT_LAYOUT.map(({ key, label, hint }) => (
             <div key={key} role="listitem">
               <SlotChip label={label} hint={hint} item={equipment[key]} />
             </div>

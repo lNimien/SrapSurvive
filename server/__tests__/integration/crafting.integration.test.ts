@@ -144,6 +144,70 @@ describe('CraftingService.craftItem (integration)', () => {
     expect(latestBalance?.balanceAfter).toBe(0);
   });
 
+  it('resolves result ItemDefinition by internalKey when DB id drifts', async () => {
+    const userId = 'user-crafting-definition-drift';
+    const recipe = CRAFTING_RECIPES.find((entry) => entry.id === 'recipe_backpack_advanced');
+
+    if (!recipe) {
+      throw new Error('Expected recipe_backpack_advanced in CRAFTING_RECIPES.');
+    }
+
+    const resultCatalogItem = ITEM_CATALOG.find((item) => item.id === recipe.resultItemDefId);
+    if (!resultCatalogItem) {
+      throw new Error(`Expected item ${recipe.resultItemDefId} in ITEM_CATALOG.`);
+    }
+
+    const existingResultDefinition = await db.itemDefinition.findUnique({
+      where: { internalKey: recipe.resultItemDefId },
+    });
+
+    if (!existingResultDefinition) {
+      throw new Error(`Expected ItemDefinition for ${recipe.resultItemDefId}.`);
+    }
+
+    const driftedResultDefinitionId = `legacy-${recipe.resultItemDefId}`;
+    await db.itemDefinition.delete({ where: { id: existingResultDefinition.id } });
+    await db.itemDefinition.create({
+      data: {
+        id: driftedResultDefinitionId,
+        internalKey: resultCatalogItem.id,
+        displayName: resultCatalogItem.displayName,
+        description: resultCatalogItem.description,
+        rarity: resultCatalogItem.rarity,
+        baseValue: resultCatalogItem.baseValue,
+        stackable: resultCatalogItem.maxStack > 1,
+        maxStack: resultCatalogItem.maxStack,
+        iconKey: resultCatalogItem.iconKey,
+        metadata: resultCatalogItem.configOptions ?? {},
+      },
+    });
+
+    await seedTestUser(userId);
+    await grantCredits(userId, recipe.costCC);
+
+    for (const ingredient of recipe.requiredMaterials) {
+      await db.inventoryItem.create({
+        data: {
+          userId,
+          itemDefinitionId: ingredient.itemDefId,
+          quantity: ingredient.quantity,
+        },
+      });
+    }
+
+    await expect(CraftingService.craftItem(userId, recipe.id)).resolves.toBeTruthy();
+
+    const craftedItem = await db.inventoryItem.findUnique({
+      where: {
+        userId_itemDefinitionId: {
+          userId,
+          itemDefinitionId: driftedResultDefinitionId,
+        },
+      },
+    });
+    expect(craftedItem?.quantity).toBe(1);
+  });
+
   it('crafts D.1 legendary recipe path with new zone materials', async () => {
     const userId = 'user-crafting-d1-legendary';
     const recipe = CRAFTING_RECIPES.find((entry) => entry.id === 'recipe_chronoguide_array');

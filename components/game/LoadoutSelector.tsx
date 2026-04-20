@@ -1,14 +1,6 @@
 import { EquipmentDTO, InventoryItemDTO } from '@/types/dto.types';
 import { InventorySlot } from '@/components/game/InventorySlot';
-
-const SLOT_LAYOUT = [
-  { key: 'HEAD', label: 'Cabeza' },
-  { key: 'BODY', label: 'Torso' },
-  { key: 'HANDS', label: 'Manos' },
-  { key: 'TOOL_PRIMARY', label: 'Herramienta Primaria' },
-  { key: 'TOOL_SECONDARY', label: 'Herramienta Secundaria' },
-  { key: 'BACKPACK', label: 'Mochila' },
-] as const;
+import { EQUIPMENT_SLOT_LAYOUT } from '@/config/equipment-slots.config';
 
 interface LoadoutSelectorProps {
   items: InventoryItemDTO[];
@@ -19,7 +11,7 @@ interface LoadoutSelectorProps {
 export function LoadoutSelector({ items, equipment, isRunActive }: LoadoutSelectorProps) {
   return (
     <section className="space-y-4" aria-label="Selector táctico de loadout">
-      {SLOT_LAYOUT.map((slot) => {
+      {EQUIPMENT_SLOT_LAYOUT.map((slot) => {
         const candidates = items.filter((item) => item.equipmentSlot === slot.key);
         const equippedDefId = equipment[slot.key]?.itemDefinitionId;
 

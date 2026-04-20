@@ -7,9 +7,9 @@ import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardFooter, CardHeader } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
-import { Hammer, Package, Coins, CheckCircle2, XCircle, Info } from 'lucide-react';
+import { Hammer, Coins, CheckCircle2, XCircle, Info } from 'lucide-react';
 import { cn } from '@/lib/utils/cn';
-import { getRarityVisuals } from '@/lib/utils/rarity';
+import { getRarityVisuals, getTierLabel } from '@/lib/utils/rarity';
 import {
   Tooltip,
   TooltipContent,
@@ -25,7 +25,7 @@ export function RecipeCard({ recipe, isRunActive }: RecipeCardProps) {
   const [isPending, startTransition] = useTransition();
   const { toast } = useToast();
 
-  const canCraft = recipe.canAffordCC && recipe.canAffordMaterials && !recipe.isLevelLocked && !isRunActive;
+  const canCraft = recipe.canAffordCC && recipe.canAffordMaterials && !recipe.isTierLocked && !isRunActive;
 
   const handleCraft = () => {
     if (!canCraft || isPending) return;
@@ -71,7 +71,10 @@ export function RecipeCard({ recipe, isRunActive }: RecipeCardProps) {
                   {recipe.resultItem.equipmentSlot || "CONSUMABLE"}
                 </Badge>
                 <Badge variant="outline" className={cn('text-[10px] py-0 font-mono', rarityVisuals.textClass)}>
-                  Nv {recipe.requiredLevel}
+                  Receta {getTierLabel(recipe.recipeTier)}
+                </Badge>
+                <Badge variant="outline" className="text-[10px] py-0 font-mono border-primary/30 text-primary/70">
+                  Requiere {getTierLabel(recipe.requiredTier)}
                 </Badge>
                 <Tooltip>
                   <TooltipTrigger>
@@ -142,7 +145,7 @@ export function RecipeCard({ recipe, isRunActive }: RecipeCardProps) {
              </div>
           </div>
 
-          {recipe.isLevelLocked && (
+          {recipe.isTierLocked && (
             <div className="p-2 mt-2 bg-destructive/10 border border-destructive/30 rounded text-xs font-mono text-destructive">
               {recipe.lockReason}
             </div>
@@ -167,8 +170,8 @@ export function RecipeCard({ recipe, isRunActive }: RecipeCardProps) {
             </div>
           ) : isRunActive ? (
             "No disponible en expedición"
-          ) : recipe.isLevelLocked ? (
-            `Bloqueado por nivel (Nv ${recipe.requiredLevel})`
+          ) : recipe.isTierLocked ? (
+            `Bloqueado (${getTierLabel(recipe.requiredTier)})`
           ) : !canCraft ? (
             "Recursos Insuficientes"
           ) : (

@@ -23,6 +23,68 @@ import { RunMode } from '../../types/game.types';
 
 type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
 
+async function ensureItemDefinitionIds(
+  tx: TxClient,
+  internalKeys: string[],
+): Promise<Map<string, string>> {
+  const uniqueKeys = [...new Set(internalKeys)];
+  const map = new Map<string, string>();
+
+  if (uniqueKeys.length === 0) {
+    return map;
+  }
+
+  for (const internalKey of uniqueKeys) {
+    const catalogItem = ITEM_CATALOG.find((item) => item.id === internalKey);
+    if (!catalogItem) {
+      console.warn('[run.resolveExtraction] Unknown catalog item in loot set', { internalKey });
+      continue;
+    }
+
+    const definition = await tx.itemDefinition.upsert({
+      where: { internalKey },
+      update: {
+        displayName: catalogItem.displayName,
+        description: catalogItem.description,
+        rarity: catalogItem.rarity as any,
+        baseValue: catalogItem.baseValue,
+        stackable: catalogItem.maxStack > 1,
+        maxStack: catalogItem.maxStack,
+        iconKey: catalogItem.iconKey,
+        metadata: {
+          itemType: catalogItem.itemType,
+          equipmentSlot: catalogItem.equipmentSlot,
+          configOptions: catalogItem.configOptions,
+        },
+      },
+      create: {
+        id: catalogItem.id,
+        internalKey: catalogItem.id,
+        displayName: catalogItem.displayName,
+        description: catalogItem.description,
+        rarity: catalogItem.rarity as any,
+        baseValue: catalogItem.baseValue,
+        stackable: catalogItem.maxStack > 1,
+        maxStack: catalogItem.maxStack,
+        iconKey: catalogItem.iconKey,
+        metadata: {
+          itemType: catalogItem.itemType,
+          equipmentSlot: catalogItem.equipmentSlot,
+          configOptions: catalogItem.configOptions,
+        },
+      },
+      select: {
+        id: true,
+        internalKey: true,
+      },
+    });
+
+    map.set(definition.internalKey, definition.id);
+  }
+
+  return map;
+}
+
 async function applyHardModeCatastropheGearLoss(
   tx: TxClient,
   userId: string,
@@ -252,6 +314,12 @@ export const RunResolutionService = {
 
     // Atomic transaction
     const extractionResult = await db.$transaction(async (tx: any) => {
+        const definitionIdMap = await ensureItemDefinitionIds(tx, [
+          ...finalLoot.map((item) => item.itemId),
+          ID_EXTRACTION_INSURANCE,
+        ]);
+        const insuranceDefinitionId = definitionIdMap.get(ID_EXTRACTION_INSURANCE) ?? ID_EXTRACTION_INSURANCE;
+
         const progression = await tx.userProgression.findUnique({
           where: { userId }
         });
@@ -263,7 +331,7 @@ export const RunResolutionService = {
         if (isCatastrophe) {
            // Check for insurance
            const insurance = await tx.inventoryItem.findFirst({
-              where: { userId, itemDefinitionId: ID_EXTRACTION_INSURANCE, quantity: { gt: 0 } }
+              where: { userId, itemDefinitionId: insuranceDefinitionId, quantity: { gt: 0 } }
            });
 
            if (insurance) {
@@ -291,11 +359,16 @@ export const RunResolutionService = {
         }
 
         for (const item of finalLoot) {
+          const definitionId = definitionIdMap.get(item.itemId);
+          if (!definitionId) {
+            continue;
+          }
+
           const existingInv = await tx.inventoryItem.findFirst({
-             where: { userId, itemDefinitionId: item.itemId }
-          });
-          
-          if (existingInv) {
+             where: { userId, itemDefinitionId: definitionId }
+           });
+           
+           if (existingInv) {
              await tx.inventoryItem.update({
                 where: { id: existingInv.id },
                 data: { quantity: { increment: item.quantity }, acquiredAt: new Date() }
@@ -304,9 +377,9 @@ export const RunResolutionService = {
              await tx.inventoryItem.create({
                 data: {
                    userId, 
-                   itemDefinitionId: item.itemId,
-                   quantity: item.quantity,
-                   acquiredAt: new Date()
+                    itemDefinitionId: definitionId,
+                    quantity: item.quantity,
+                    acquiredAt: new Date()
                 }
              });
           }

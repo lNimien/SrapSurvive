@@ -19,14 +19,41 @@ import { InventoryService, DomainError } from '../domain/inventory/inventory.ser
 import { RunRepository } from '../repositories/run.repository';
 import { InventoryRepository } from '../repositories/inventory.repository';
 import { EconomyRepository } from '../repositories/economy.repository';
-import { ActionResult, EquipmentDTO, RecipeDTO } from '../../types/dto.types';
+import { ActionResult, ErrorCode, ItemRarityDTO, ItemTierDTO, RecipeDTO } from '../../types/dto.types';
 import { CraftingService } from '../services/crafting.service';
 import { SalvageService } from '../services/salvage.service';
 import { guardMutationCategory } from '../services/mutation-guard.service';
-import { CRAFTING_RECIPES, ITEM_CATALOG } from '../../config/game.config';
+import { CRAFTING_RECIPES, ITEM_CATALOG, ZONE_CONFIGS } from '../../config/game.config';
 import { Prisma } from '@prisma/client';
 import { UserRepository } from '../repositories/user.repository';
 import { CraftingCalculator } from '../domain/inventory/crafting.calculator';
+import { resolveItemTier } from '@/lib/utils/rarity';
+
+function getHighestUnlockedZoneLevel(playerLevel: number): number {
+  return Math.max(
+    1,
+    ...ZONE_CONFIGS.filter((zone) => playerLevel >= zone.minLevel).map((zone) => zone.minLevel),
+  );
+}
+
+function toErrorCode(value: string): ErrorCode {
+  const knownCodes: ErrorCode[] = [
+    'UNAUTHORIZED',
+    'VALIDATION_ERROR',
+    'FEATURE_DISABLED',
+    'RUN_ALREADY_ACTIVE',
+    'RUN_NOT_RUNNING',
+    'RUN_ALREADY_RESOLVED',
+    'NOT_FOUND',
+    'INSUFFICIENT_BALANCE',
+    'INSUFFICIENT_FUNDS',
+    'EXPIRED',
+    'TRANSACTION_FAILED',
+    'INTERNAL_ERROR',
+  ];
+
+  return knownCodes.includes(value as ErrorCode) ? (value as ErrorCode) : 'INTERNAL_ERROR';
+}
 
 async function verifyActionPreconditions() {
   const session = await auth();
@@ -45,11 +72,11 @@ async function verifyActionPreconditions() {
   return userId;
 }
 
-function handleActionError(error: unknown): ActionResult<any> {
+function handleActionError(error: unknown): ActionResult<unknown> {
   if (error instanceof DomainError) {
     return {
       success: false,
-      error: { code: error.code as any, message: error.message },
+      error: { code: toErrorCode(error.code), message: error.message },
     };
   }
   
@@ -184,9 +211,16 @@ export async function getRecipesAction(): Promise<ActionResult<RecipeDTO[]>> {
       UserRepository.getUserProfile(userId),
     ]);
     const playerLevel = profile?.level ?? 1;
+    const highestUnlockedZoneLevel = getHighestUnlockedZoneLevel(playerLevel);
+    const unlockedTiers = CraftingCalculator.getUnlockedCraftingTiers({
+      playerLevel,
+      highestUnlockedZoneLevel,
+    });
 
     const recipeDTOs: RecipeDTO[] = CRAFTING_RECIPES.map(recipe => {
       const resultDef = ITEM_CATALOG.find(i => i.id === recipe.resultItemDefId)!;
+      const recipeTier = resolveItemTier(resultDef.rarity as unknown as ItemRarityDTO);
+      const requiredTier = CraftingCalculator.getRequiredTier(recipe.requiredLevel);
       
       const ingredients = recipe.requiredMaterials.map(req => {
         const inv = inventory.find(i => i.itemDefinitionId === req.itemDefId);
@@ -196,7 +230,7 @@ export async function getRecipesAction(): Promise<ActionResult<RecipeDTO[]>> {
           itemDefId: req.itemDefId,
           displayName: def.displayName,
           iconKey: def.iconKey,
-          rarity: def.rarity as any,
+          rarity: def.rarity as unknown as ItemRarityDTO,
           requiredQuantity: req.quantity,
           currentQuantity: inv?.quantity || 0
         };
@@ -204,19 +238,26 @@ export async function getRecipesAction(): Promise<ActionResult<RecipeDTO[]>> {
 
       const canAffordMaterials = ingredients.every(i => i.currentQuantity >= i.requiredQuantity);
       const canAffordCC = balance >= recipe.costCC;
-      const lockReason = CraftingCalculator.getRecipeLockReason(recipe, playerLevel);
+      const lockReason = CraftingCalculator.getRecipeLockReason(recipe, {
+        playerLevel,
+        highestUnlockedZoneLevel,
+      });
 
       return {
         id: recipe.id,
         requiredLevel: recipe.requiredLevel,
         playerLevel,
+        recipeTier: recipeTier as ItemTierDTO,
+        requiredTier: requiredTier as ItemTierDTO,
+        unlockedTiers: unlockedTiers as ItemTierDTO[],
+        isTierLocked: lockReason !== null,
         isLevelLocked: lockReason !== null,
         lockReason,
         resultItem: {
           id: resultDef.id,
           displayName: resultDef.displayName,
           description: resultDef.description,
-          rarity: resultDef.rarity as any,
+          rarity: resultDef.rarity as unknown as ItemRarityDTO,
           iconKey: resultDef.iconKey,
           equipmentSlot: resultDef.equipmentSlot,
           configOptions: resultDef.configOptions

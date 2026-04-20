@@ -2,6 +2,7 @@ import { ExtractionResultDTO } from '../../types/dto.types';
 import { cn } from '@/lib/utils';
 import { Terminal, Package, CreditCard, ChevronRight, Zap } from 'lucide-react';
 import { buttonVariants } from '../ui/button';
+import { getRarityVisuals, getTierLabel } from '@/lib/utils/rarity';
 
 interface RunResultModalProps {
   result: ExtractionResultDTO;
@@ -85,21 +86,28 @@ export function RunResultModal({ result, onClose }: RunResultModalProps) {
                    </div>
                 ) : (
                    <ul className="divide-y divide-white/5 max-h-48 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-primary/20">
-                      {result.loot.map((item, idx) => (
-                         <li key={idx} className="flex justify-between items-center p-3 font-mono text-xs group hover:bg-primary/5 transition-colors">
-                            <div className="flex items-center gap-3">
-                              <div className={cn("w-1.5 h-1.5 rotate-45", `bg-rarity-${item.rarity.toLowerCase() || 'common'}`)} />
-                              <span className={cn("uppercase tracking-wider font-bold", `text-rarity-${item.rarity.toLowerCase() || 'common'}`)}>
-                                {item.displayName}
+                      {result.loot.map((item, idx) => {
+                        const rarityVisuals = getRarityVisuals(item.rarity);
+
+                        return (
+                          <li key={idx} className="flex justify-between items-center p-3 font-mono text-xs group hover:bg-primary/5 transition-colors">
+                             <div className="flex items-center gap-3">
+                              <div className={cn('w-1.5 h-1.5 rotate-45', rarityVisuals.textClass.replace('text-', 'bg-'))} />
+                              <span className={cn('uppercase tracking-wider font-bold', rarityVisuals.textClass)}>
+                                 {item.displayName}
                               </span>
-                            </div>
-                            <span className="text-primary font-black opacity-50 group-hover:opacity-100 transition-opacity">
-                              X{item.quantity}
-                            </span>
-                         </li>
-                      ))}
-                   </ul>
-                )}
+                              <span className={cn('text-[9px] uppercase tracking-widest', rarityVisuals.textClass)}>
+                                {getTierLabel(item.rarity)}
+                              </span>
+                             </div>
+                             <span className="text-primary font-black opacity-50 group-hover:opacity-100 transition-opacity">
+                               X{item.quantity}
+                             </span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                 )}
               </div>
            </div>
 

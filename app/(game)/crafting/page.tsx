@@ -7,6 +7,7 @@ import { getRecipesAction } from '@/server/actions/inventory.actions';
 import { CraftingRecipeGrid } from '@/components/game/CraftingRecipeGrid';
 import { Hammer, Info } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { getTierLabel } from '@/lib/utils/rarity';
 
 export const metadata = {
   title: 'Taller de Fabricación | Scrap & Survive',
@@ -38,6 +39,8 @@ export default async function CraftingPage() {
   }
 
   const recipes = recipesResult.data;
+  const unlockedTierSet = new Set(recipes.flatMap((recipe) => recipe.unlockedTiers));
+  const unlockedTierLabels = [...unlockedTierSet].map((tier) => getTierLabel(tier));
   const isRunActive = playerState.activeRun?.status === 'running';
 
   return (
@@ -70,6 +73,16 @@ export default async function CraftingPage() {
         </Alert>
       )}
 
+      <section className="border border-primary/20 bg-primary/5 rounded-lg p-4" aria-label="Autorización del taller">
+        <p className="text-[10px] font-mono uppercase tracking-widest text-primary/60">Autorización Operativa</p>
+        <p className="mt-1 text-sm font-mono text-primary">
+          Tiers habilitados: {unlockedTierLabels.join(' · ')}
+        </p>
+        <p className="mt-2 text-xs font-mono text-muted-foreground">
+          El acceso a recetas combina nivel de chatarrero y alcance de expedición. La fabricación sigue validándose en servidor.
+        </p>
+      </section>
+
       <CraftingRecipeGrid recipes={recipes} isRunActive={isRunActive} />
 
       <footer className="mt-12 p-6 glass-panel border border-primary/10 rounded-lg bg-primary/2">
@@ -80,7 +93,7 @@ export default async function CraftingPage() {
            <div>
               <h4 className="font-sans font-bold text-primary uppercase tracking-wide">Consejo de Chatarrero</h4>
               <p className="text-xs text-muted-foreground font-mono mt-1 leading-relaxed">
-                Los materiales ÉPICOS como los "Núcleos de Plasma" son extremadamente difíciles de conseguir. 
+                Los materiales ÉPICOS como los &quot;Núcleos de Plasma&quot; son extremadamente difíciles de conseguir. 
                 Asegúrate de fabricar el equipo que mejor se adapte a tu estilo de juego. El equipo avanzado 
                 puede otorgar bonificaciones de detección de anomalías o mayor resistencia al peligro.
               </p>

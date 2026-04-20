@@ -6,13 +6,13 @@ import { DangerMeter } from './DangerMeter';
 import { LootPreview } from './LootPreview';
 import { ExtractButton } from './ExtractButton';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '../ui/card';
-import { Separator } from '../ui/separator';
 import { resolveAnomalyAction } from '@/server/actions/run.actions';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { AlertTriangle, ShieldCheck, Zap } from 'lucide-react';
 import { Button } from '../ui/button';
 import { cn } from '@/lib/utils/cn';
+import { getActivityLine, getExpeditionVisualState } from '@/lib/utils/expedition-ui';
 
 interface ExpeditionPanelProps {
   activeRun: RunStateDTO;
@@ -34,8 +34,16 @@ export function ExpeditionPanel({ activeRun: initialActiveRun, onExtractionResul
   const isCatastrophe = polledRun.status === 'catastrophe';
   const anomaly = polledRun.anomaly;
   const [isResolving, setIsResolving] = useState(false);
+  const [activityTick, setActivityTick] = useState(0);
   const dangerTrend: 'rising' | 'stable' = visualDanger > (polledRun.dangerLevel ?? 0) ? 'rising' : 'stable';
   const signalNoise = Math.min(100, Math.round(visualDanger * 72 + (polledRun.pendingLoot?.length ?? 0) * 3));
+  const visualState = getExpeditionVisualState(visualDanger, isCatastrophe);
+  const activityLine = getActivityLine(visualState, activityTick);
+
+  useEffect(() => {
+    const timer = setInterval(() => setActivityTick((prev) => prev + 1), 3200);
+    return () => clearInterval(timer);
+  }, []);
 
   const handleResolveAnomaly = async (decision: 'IGNORE' | 'INVESTIGATE') => {
     if (!anomaly || !polledRun.runId) return;
@@ -53,7 +61,7 @@ export function ExpeditionPanel({ activeRun: initialActiveRun, onExtractionResul
       } else {
         toast({ title: "Error", description: result.error.message, variant: "destructive" });
       }
-    } catch (e) {
+    } catch {
       toast({ title: "Error", description: "Error al procesar la anomalía.", variant: "destructive" });
     } finally {
       setIsResolving(false);
@@ -113,7 +121,7 @@ export function ExpeditionPanel({ activeRun: initialActiveRun, onExtractionResul
               </div>
 
               <div className="text-[9px] font-mono text-center opacity-30 uppercase tracking-tighter">
-                 Internal_Link_Error: Anomaly_Detection_System // Sector_{polledRun.zoneId?.toUpperCase()}
+                 Internal_Link_Error · Anomaly_Detection_System · Sector_{polledRun.zoneId?.toUpperCase()}
               </div>
            </div>
         </div>
@@ -126,7 +134,7 @@ export function ExpeditionPanel({ activeRun: initialActiveRun, onExtractionResul
               {isCatastrophe ? 'CATÁSTROFE_EN_CURSO' : 'EXPEDICIÓN_ACTIVA'}
             </CardTitle>
             <p className="font-mono text-[10px] text-muted-foreground tracking-[0.3em] uppercase opacity-70">
-              Sector_{polledRun.zoneId?.toUpperCase() || 'UNKNOWN'} // Link_Established
+              Sector_{polledRun.zoneId?.toUpperCase() || 'UNKNOWN'} · Link_Established
             </p>
             <p className="font-mono text-[10px] text-cyan-300/80 tracking-[0.2em] uppercase">
               Mode_{polledRun.runMode ?? 'SAFE'}
@@ -146,6 +154,38 @@ export function ExpeditionPanel({ activeRun: initialActiveRun, onExtractionResul
       </CardHeader>
 
       <CardContent className="space-y-6 relative z-10 px-6">
+        <section
+          className={cn(
+            'relative border rounded-sm overflow-hidden p-4',
+            visualState === 'critical' ? 'border-destructive/40 bg-destructive/5' : 'border-primary/20 bg-primary/5',
+          )}
+          aria-label="Visual activo de expedición"
+        >
+          <div className="absolute inset-0 opacity-25 pointer-events-none bg-[radial-gradient(circle_at_50%_50%,rgba(0,243,255,0.22),transparent_65%)]" />
+          <div className="absolute inset-0 pointer-events-none opacity-40 bg-[linear-gradient(transparent_96%,rgba(255,255,255,0.07)_96%)] bg-[length:100%_12px]" />
+
+          <div className="relative h-24 flex items-center justify-between gap-4">
+            <svg viewBox="0 0 180 48" className="h-16 w-52 text-primary/80 drop-shadow-[0_0_12px_rgba(0,243,255,0.35)]">
+              <g className="origin-center animate-[pulse_2.8s_ease-in-out_infinite]">
+                <path d="M4 24L36 14L68 14L102 6L144 24L102 42L68 34L36 34Z" fill="currentColor" fillOpacity="0.23" />
+                <path d="M18 24H136" stroke="currentColor" strokeWidth="1.5" strokeOpacity="0.8" />
+              </g>
+              <circle cx="150" cy="24" r="2.4" className="animate-pulse" fill="currentColor" />
+              <path d="M150 24L174 24" stroke="currentColor" strokeWidth="1.2" strokeDasharray="3 3" />
+            </svg>
+
+            <div className="min-w-0">
+              <p className="text-[10px] font-mono uppercase tracking-[0.24em] text-primary/60">Drone Feed</p>
+              <p key={`${visualState}-${activityTick}`} className="mt-1 text-xs font-mono text-primary/90 animate-in fade-in slide-in-from-bottom-1 duration-300">
+                {activityLine}
+              </p>
+              <p className="mt-2 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+                Estado visual: {visualState}
+              </p>
+            </div>
+          </div>
+        </section>
+
         <div className="py-2">
           <DangerMeter dangerLevel={visualDanger} status={polledRun.status} trend={dangerTrend} />
         </div>

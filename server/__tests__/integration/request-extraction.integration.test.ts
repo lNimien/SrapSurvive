@@ -83,7 +83,7 @@ describe('RunResolutionService.resolveExtraction (integration)', () => {
     });
   });
 
-  it('rolls back atomically when DB FK failure occurs mid-transaction', async () => {
+  it('self-heals missing ItemDefinition rows before persisting extraction loot', async () => {
     const fixedNow = Date.UTC(2026, 0, 1, 11, 0, 0);
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(fixedNow);
 
@@ -96,28 +96,27 @@ describe('RunResolutionService.resolveExtraction (integration)', () => {
         startedAt: new Date(fixedNow - 120_000),
       });
 
-      const [inventoryBefore, ledgerBefore] = await Promise.all([
-        db.inventoryItem.count({ where: { userId } }),
-        db.currencyLedger.count({ where: { userId } }),
-      ]);
-
       await db.itemDefinition.delete({ where: { id: 'scrap_metal' } });
 
-      await expect(RunResolutionService.resolveExtraction(userId, runId)).rejects.toMatchObject({
-        code: 'P2003',
-      });
+      const result = await RunResolutionService.resolveExtraction(userId, runId);
+      expect(result.status).toBe('extracted');
 
-      const [inventoryAfter, ledgerAfter, activeRunAfter, extractionAfter] = await Promise.all([
+      const [restoredDefinition, inventoryAfter, activeRunAfter, extractionAfter] = await Promise.all([
+        db.itemDefinition.findUnique({ where: { internalKey: 'scrap_metal' } }),
         db.inventoryItem.count({ where: { userId } }),
-        db.currencyLedger.count({ where: { userId } }),
         db.activeRun.findUnique({ where: { userId } }),
         db.extractionResult.findFirst({ where: { runId } }),
       ]);
 
-      expect(inventoryAfter).toBe(inventoryBefore);
-      expect(ledgerAfter).toBe(ledgerBefore);
-      expect(activeRunAfter?.id).toBe(runId);
-      expect(extractionAfter).toBeNull();
+      expect(restoredDefinition?.id).toBe('scrap_metal');
+      expect(inventoryAfter).toBeGreaterThan(0);
+      expect(activeRunAfter).toBeNull();
+      expect(extractionAfter?.status).toBe('EXTRACTED');
+
+      const scrapRow = await db.inventoryItem.findFirst({
+        where: { userId, itemDefinitionId: restoredDefinition?.id },
+      });
+      expect(scrapRow?.quantity).toBeGreaterThan(0);
     } finally {
       nowSpy.mockRestore();
     }

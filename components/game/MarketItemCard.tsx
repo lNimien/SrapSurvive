@@ -9,6 +9,9 @@ import { Slider } from '../ui/slider';
 import { useToast } from '@/hooks/use-toast';
 import { getRarityVisuals } from '@/lib/utils/rarity';
 import { normalizeSellAmount } from '@/lib/utils/market-sell';
+import { ItemRarityBadge } from './ItemRarityBadge';
+import { Badge } from '../ui/badge';
+import { cn } from '@/lib/utils/cn';
 
 interface MarketItemCardProps {
   item: InventoryItemDTO & { currentPrice?: number };
@@ -30,6 +33,12 @@ const MarketItemVisuals = memo(({ item }: { item: InventoryItemDTO & { currentPr
         <div>
           <h3 className="font-sans font-bold text-lg text-primary tracking-wide uppercase leading-tight">{item.displayName}</h3>
           <p className="text-xs text-muted-foreground font-mono uppercase tracking-tighter">STOCK_{item.quantity}</p>
+          <div className="mt-1 flex items-center gap-1.5">
+            <ItemRarityBadge rarity={item.rarity} className="py-0" />
+            <Badge variant="outline" className="text-[10px] uppercase tracking-widest border-zinc-600 text-zinc-300">
+              Material
+            </Badge>
+          </div>
         </div>
       </div>
       <div className="text-right flex flex-col items-end">
@@ -102,7 +111,7 @@ export function MarketItemCard({ item, isRunActive }: MarketItemCardProps) {
   const sliderValue = useMemo(() => [sellAmount], [sellAmount]);
 
   return (
-    <Card className={`glass-panel border-l-4 ${rarityVisuals.borderClass} ${rarityVisuals.bgClass} cyberpunk-box transition-all hover:border-primary/50 hover:shadow-[0_0_20px_rgba(0,243,255,0.1)] flex flex-col justify-between`}>
+    <Card className={cn('glass-panel border-l-4 cyberpunk-box transition-all hover:border-primary/50 hover:shadow-[0_0_20px_rgba(0,243,255,0.1)] flex flex-col justify-between', rarityVisuals.borderClass, rarityVisuals.bgClass)}>
       <MarketItemVisuals item={item} />
 
       <CardContent className="p-4 pt-2 pb-2">

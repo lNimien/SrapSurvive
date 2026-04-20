@@ -26,6 +26,7 @@ export interface ActionError {
 }
 
 export type ItemRarityDTO = "COMMON" | "UNCOMMON" | "RARE" | "EPIC" | "LEGENDARY" | "CORRUPTED";
+export type ItemTierDTO = "COMMON" | "UNCOMMON" | "RARE" | "EPIC" | "LEGENDARY" | "GODLIKE";
 export type RunModeDTO = 'SAFE' | 'HARD';
 
 export type ItemConfigOptionsDTO = {
@@ -286,6 +287,10 @@ export interface RecipeDTO {
   id: string;
   requiredLevel: number;
   playerLevel: number;
+   recipeTier: ItemTierDTO;
+   requiredTier: ItemTierDTO;
+   unlockedTiers: ItemTierDTO[];
+   isTierLocked: boolean;
   isLevelLocked: boolean;
   lockReason: string | null;
   resultItem: {

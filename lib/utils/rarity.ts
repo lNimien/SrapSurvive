@@ -1,4 +1,10 @@
 import { ItemRarityDTO } from '@/types/dto.types';
+import {
+  ITEM_TIER_LADDER,
+  ITEM_TIER_META,
+  ItemTier,
+  LEGACY_RARITY_TO_TIER,
+} from '@/config/item-tiers.config';
 
 export interface RarityVisualTokens {
   borderClass: string;
@@ -6,39 +12,28 @@ export interface RarityVisualTokens {
   bgClass: string;
 }
 
-const RARITY_VISUALS: Record<ItemRarityDTO, RarityVisualTokens> = {
-  COMMON: {
-    borderClass: 'border-l-slate-400',
-    textClass: 'text-slate-300',
-    bgClass: 'bg-slate-500/10',
-  },
-  UNCOMMON: {
-    borderClass: 'border-l-emerald-400',
-    textClass: 'text-emerald-300',
-    bgClass: 'bg-emerald-500/10',
-  },
-  RARE: {
-    borderClass: 'border-l-blue-400',
-    textClass: 'text-blue-300',
-    bgClass: 'bg-blue-500/10',
-  },
-  EPIC: {
-    borderClass: 'border-l-fuchsia-400',
-    textClass: 'text-fuchsia-300',
-    bgClass: 'bg-fuchsia-500/10',
-  },
-  LEGENDARY: {
-    borderClass: 'border-l-amber-400',
-    textClass: 'text-amber-300',
-    bgClass: 'bg-amber-500/10',
-  },
-  CORRUPTED: {
-    borderClass: 'border-l-red-500',
-    textClass: 'text-red-300',
-    bgClass: 'bg-red-500/10',
-  },
-};
+export function resolveItemTier(input: ItemRarityDTO | ItemTier): ItemTier {
+  if ((ITEM_TIER_LADDER as readonly string[]).includes(input)) {
+    return input as ItemTier;
+  }
+
+  return LEGACY_RARITY_TO_TIER[input as ItemRarityDTO] ?? 'COMMON';
+}
+
+export function getTierLabel(input: ItemRarityDTO | ItemTier): string {
+  return ITEM_TIER_META[resolveItemTier(input)].label;
+}
+
+export function compareTierOrder(a: ItemRarityDTO | ItemTier, b: ItemRarityDTO | ItemTier): number {
+  return ITEM_TIER_META[resolveItemTier(a)].rank - ITEM_TIER_META[resolveItemTier(b)].rank;
+}
 
 export function getRarityVisuals(rarity: ItemRarityDTO): RarityVisualTokens {
-  return RARITY_VISUALS[rarity] ?? RARITY_VISUALS.COMMON;
+  const meta = ITEM_TIER_META[resolveItemTier(rarity)];
+
+  return {
+    borderClass: meta.borderClass,
+    textClass: meta.textClass,
+    bgClass: meta.bgClass,
+  };
 }

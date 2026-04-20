@@ -46,17 +46,8 @@ export default async function DashboardPage() {
 
       <Separator className="bg-primary/20 mb-8 w-[calc(100%-2rem)] mx-auto" />
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 px-2 lg:px-6 pb-12 w-full max-w-7xl mx-auto">
-        <section className="lg:col-span-12" aria-label="Control de expedición">
-          <ExpeditionManager activeRun={player.activeRun} playerLevel={player.level} />
-        </section>
-
-        <section className="lg:col-span-8 flex flex-col gap-6" aria-label="Eventos y telemetría semanal">
-          {featureFlags.d3WeeklyGoals && <WeeklyGoalsPanel weeklyGoals={player.weeklyGoals} />}
-          {featureFlags.d3PlayerAnalytics && <PlayerAnalyticsPanel analytics={player.analytics} />}
-        </section>
-
-        <aside className="lg:col-span-4 flex flex-col gap-6" aria-label="Perfil del chatarrero">
+      <div className="grid grid-cols-1 xl:grid-cols-[320px_minmax(0,1fr)] gap-8 px-2 lg:px-6 pb-12 w-full max-w-7xl mx-auto">
+        <aside className="flex flex-col gap-6" aria-label="Perfil y equipo del chatarrero">
           <ScrapperCard
             player={{
               displayName: player.displayName,
@@ -71,6 +62,12 @@ export default async function DashboardPage() {
             activeArchetype={featureFlags.d3BuildSynergies ? player.activeArchetype : null}
           />
         </aside>
+
+        <section className="flex flex-col gap-6 min-w-0" aria-label="Control de expedición y telemetría">
+          <ExpeditionManager activeRun={player.activeRun} playerLevel={player.level} />
+          {featureFlags.d3WeeklyGoals && <WeeklyGoalsPanel weeklyGoals={player.weeklyGoals} />}
+          {featureFlags.d3PlayerAnalytics && <PlayerAnalyticsPanel analytics={player.analytics} />}
+        </section>
       </div>
     </main>
   );

@@ -7,6 +7,9 @@ import { Card, CardContent, CardFooter, CardHeader } from '../ui/card';
 import { Button } from '../ui/button';
 import { useToast } from '../../hooks/use-toast';
 import { getRarityVisuals } from '@/lib/utils/rarity';
+import { ItemRarityBadge } from './ItemRarityBadge';
+import { Badge } from '../ui/badge';
+import { cn } from '@/lib/utils/cn';
 
 interface VendorItemCardProps {
   item: ItemDefinition;
@@ -46,7 +49,7 @@ export function VendorItemCard({ item, priceCC, currentBalance, isRunActive }: V
   const rarityVisuals = useMemo(() => getRarityVisuals(item.rarity), [item.rarity]);
 
   return (
-    <Card className={`glass-panel border-l-4 ${rarityVisuals.borderClass} ${rarityVisuals.bgClass} cyberpunk-box transition-all hover:border-primary/50 hover:shadow-[0_0_20px_rgba(0,243,255,0.1)] flex flex-col justify-between h-full`}>
+    <Card className={cn('glass-panel border-l-4 cyberpunk-box transition-all hover:border-primary/50 hover:shadow-[0_0_20px_rgba(0,243,255,0.1)] flex flex-col justify-between h-full', rarityVisuals.borderClass, rarityVisuals.bgClass)}>
       <CardHeader className="p-4 pb-2 flex flex-row items-start justify-between space-y-0">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 bg-background/50 border border-border flex items-center justify-center shadow-[inset_0_0_10px_rgba(0,243,255,0.1)]">
@@ -54,7 +57,12 @@ export function VendorItemCard({ item, priceCC, currentBalance, isRunActive }: V
           </div>
           <div>
             <h3 className="font-sans font-bold text-lg text-primary tracking-wide uppercase leading-tight">{item.displayName}</h3>
-            <p className="text-[10px] text-muted-foreground font-mono uppercase tracking-tighter">{item.itemType}</p>
+            <div className="mt-1 flex items-center gap-1.5">
+              <ItemRarityBadge rarity={item.rarity} className="py-0" />
+              <Badge variant="outline" className="text-[10px] text-muted-foreground font-mono uppercase tracking-tighter border-zinc-600">
+                {item.itemType}
+              </Badge>
+            </div>
           </div>
         </div>
         <div className="text-right">
