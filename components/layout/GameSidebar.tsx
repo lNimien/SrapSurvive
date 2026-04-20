@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { PackageSearch, Satellite, BarChart2, Store, LogOut, Terminal, Hammer, Shield, FileCheck2, Trophy, Cpu } from 'lucide-react';
+import { PackageSearch, Satellite, BarChart2, Store, LogOut, Terminal, Hammer, Shield, FileCheck2, Trophy, Cpu, Boxes } from 'lucide-react';
 import { auth, signOut } from '@/server/auth/auth';
 import { isAdminUser } from '@/server/auth/admin';
 import { SidebarContextService } from '@/server/services/sidebar-context.service';
@@ -126,6 +126,18 @@ export async function GameSidebar() {
           <div className="absolute left-0 top-0 bottom-0 w-1 bg-yellow-500 scale-y-0 group-hover:scale-y-100 transition-transform origin-top" />
           <Store className="w-5 h-5 text-muted-foreground group-hover:text-yellow-400 transition-colors" />
           <span className="hidden md:inline font-sans uppercase tracking-widest font-semibold flex-1 text-left">Mercado Negro</span>
+        </Link>
+
+        <Link
+          href="/crates"
+          className={cn(
+            buttonVariants({ variant: "ghost" }),
+            "justify-start gap-4 h-12 w-full hover:bg-fuchsia-500/10 hover:text-fuchsia-300 transition-all group relative overflow-hidden"
+          )}
+        >
+          <div className="absolute left-0 top-0 bottom-0 w-1 bg-fuchsia-400 scale-y-0 group-hover:scale-y-100 transition-transform origin-top" />
+          <Boxes className="w-5 h-5 text-muted-foreground group-hover:text-fuchsia-300 transition-colors" />
+          <span className="hidden md:inline font-sans uppercase tracking-widest font-semibold flex-1 text-left">Crates</span>
         </Link>
 
         <Link 

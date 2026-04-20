@@ -386,6 +386,46 @@ export interface RecipeDTO {
   canAffordMaterials: boolean;
 }
 
+export type CrateVisualTierDTO = 'SCAVENGER' | 'TACTICAL' | 'RELIC';
+
+export interface CrateRewardPreviewDTO {
+  itemDefinitionId: string;
+  displayName: string;
+  rarity: ItemRarityDTO;
+  iconKey: string;
+  probabilityPercent: number;
+  quantityMin: number;
+  quantityMax: number;
+}
+
+export interface CrateDTO {
+  id: string;
+  name: string;
+  description: string;
+  imagePath: string;
+  priceCC: number;
+  visualTier: CrateVisualTierDTO;
+  available: boolean;
+  minLevel: number;
+  unlocked: boolean;
+  rewards: CrateRewardPreviewDTO[];
+}
+
+export interface CrateOpenResultDTO {
+  crateId: string;
+  crateName: string;
+  spentCC: number;
+  newBalance: number;
+  reward: {
+    itemDefinitionId: string;
+    displayName: string;
+    rarity: ItemRarityDTO;
+    iconKey: string;
+    quantity: number;
+  };
+  openedAt: string;
+}
+
 /** Estado completo del jugador para la dashboard */
 export interface PlayerStateDTO {
   userId: string;

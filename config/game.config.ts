@@ -481,6 +481,124 @@ export const ITEM_CATALOG: ItemDefinition[] = [
     maxStack: 1,
     equipmentSlot: EquipmentSlotKey.TOOL_SECONDARY,
     configOptions: { lootMultiplier: 0.18, xpMultiplier: 0.07 }
+  },
+  {
+    id: 'gloves_precision_weave',
+    displayName: 'Guantes de Trama de Precisión',
+    description: 'Micromotores de ajuste para separar aleaciones sin perder rendimiento.',
+    itemType: ItemCategory.EQUIPMENT,
+    rarity: ItemRarity.UNCOMMON,
+    iconKey: 'icon_gloves_precision_weave',
+    baseValue: 210,
+    maxStack: 1,
+    equipmentSlot: EquipmentSlotKey.HANDS,
+    configOptions: { lootMultiplier: 0.1, dangerResistance: 0.02 }
+  },
+  {
+    id: 'gloves_quantum_grip',
+    displayName: 'Guantes Quantum Grip',
+    description: 'Anillos de estabilización cuántica para trabajo fino bajo presión extrema.',
+    itemType: ItemCategory.EQUIPMENT,
+    rarity: ItemRarity.EPIC,
+    iconKey: 'icon_gloves_quantum_grip',
+    baseValue: 1280,
+    maxStack: 1,
+    equipmentSlot: EquipmentSlotKey.HANDS,
+    configOptions: { lootMultiplier: 0.28, dangerResistance: 0.05, xpMultiplier: 0.04 }
+  },
+  {
+    id: 'gloves_event_horizon',
+    displayName: 'Guantes Horizonte de Eventos',
+    description: 'Actuadores de compresión táctica para extracciones de altísima densidad.',
+    itemType: ItemCategory.EQUIPMENT,
+    rarity: ItemRarity.LEGENDARY,
+    iconKey: 'icon_gloves_event_horizon',
+    baseValue: 2360,
+    maxStack: 1,
+    equipmentSlot: EquipmentSlotKey.HANDS,
+    configOptions: { lootMultiplier: 0.36, dangerResistance: 0.07, xpMultiplier: 0.08 }
+  },
+  {
+    id: 'tool_secondary_echo_scanner',
+    displayName: 'Escáner Eco Mk-I',
+    description: 'Módulo secundario de detección temprana para rutas de menor riesgo.',
+    itemType: ItemCategory.EQUIPMENT,
+    rarity: ItemRarity.COMMON,
+    iconKey: 'icon_tool_secondary_echo',
+    baseValue: 120,
+    maxStack: 1,
+    equipmentSlot: EquipmentSlotKey.TOOL_SECONDARY,
+    configOptions: { dangerResistance: 0.03 }
+  },
+  {
+    id: 'tool_secondary_phase_link',
+    displayName: 'Phase-Link Mk-II',
+    description: 'Interfaz secundaria de calibración de trayectorias en zonas inestables.',
+    itemType: ItemCategory.EQUIPMENT,
+    rarity: ItemRarity.UNCOMMON,
+    iconKey: 'icon_tool_secondary_phase',
+    baseValue: 320,
+    maxStack: 1,
+    equipmentSlot: EquipmentSlotKey.TOOL_SECONDARY,
+    configOptions: { dangerResistance: 0.05, xpMultiplier: 0.02 }
+  },
+  {
+    id: 'tool_secondary_resonance_anchor',
+    displayName: 'Ancla de Resonancia Mk-III',
+    description: 'Ancla de apoyo para mantener integridad estructural durante extracciones largas.',
+    itemType: ItemCategory.EQUIPMENT,
+    rarity: ItemRarity.RARE,
+    iconKey: 'icon_tool_secondary_anchor',
+    baseValue: 680,
+    maxStack: 1,
+    equipmentSlot: EquipmentSlotKey.TOOL_SECONDARY,
+    configOptions: { dangerResistance: 0.09, lootMultiplier: 0.1 }
+  },
+  {
+    id: 'tool_secondary_entropic_array',
+    displayName: 'Array Entrópico Secundario',
+    description: 'Sub-sistema legendario de mitigación y análisis para operaciones de elite.',
+    itemType: ItemCategory.EQUIPMENT,
+    rarity: ItemRarity.LEGENDARY,
+    iconKey: 'icon_tool_secondary_entropic',
+    baseValue: 2440,
+    maxStack: 1,
+    equipmentSlot: EquipmentSlotKey.TOOL_SECONDARY,
+    configOptions: { dangerResistance: 0.13, lootMultiplier: 0.16, xpMultiplier: 0.09 }
+  },
+  {
+    id: 'suit_salvage_command',
+    displayName: 'Armadura Salvage Command',
+    description: 'Placas de mando con circuito de reparto energético para jornadas largas.',
+    itemType: ItemCategory.EQUIPMENT,
+    rarity: ItemRarity.RARE,
+    iconKey: 'icon_suit_salvage_command',
+    baseValue: 730,
+    maxStack: 1,
+    equipmentSlot: EquipmentSlotKey.BODY,
+    configOptions: { dangerResistance: 0.14, currencyMultiplier: 0.04 }
+  },
+  {
+    id: 'backpack_salvager_frame',
+    displayName: 'Mochila Salvager Frame',
+    description: 'Estructura modular compacta para aumentar capacidad sin penalizar movilidad.',
+    itemType: ItemCategory.EQUIPMENT,
+    rarity: ItemRarity.UNCOMMON,
+    iconKey: 'icon_backpack_salvager_frame',
+    baseValue: 250,
+    maxStack: 1,
+    equipmentSlot: EquipmentSlotKey.BACKPACK,
+    configOptions: { backpackCapacity: 0.42, dangerResistance: 0.02 }
+  },
+  {
+    id: 'extraction_insurance_bundle',
+    displayName: 'Bundle de Seguro de Extracción',
+    description: 'Póliza premium de despliegue rápido para operaciones de alto riesgo.',
+    itemType: ItemCategory.CONSUMABLE,
+    rarity: ItemRarity.LEGENDARY,
+    iconKey: 'icon_extraction_insurance_bundle',
+    baseValue: 520,
+    maxStack: 5
   }
 ];
 
@@ -613,5 +731,98 @@ export const CRAFTING_RECIPES: Recipe[] = [
       { itemDefId: 'recycled_component', quantity: 10 }
     ],
     costCC: 2740
+  },
+  {
+    id: 'recipe_gloves_precision_weave',
+    resultItemDefId: 'gloves_precision_weave',
+    requiredLevel: 3,
+    requiredMaterials: [
+      { itemDefId: 'armor_fiber', quantity: 3 },
+      { itemDefId: 'copper_wire', quantity: 10 },
+      { itemDefId: 'energy_cell', quantity: 6 }
+    ],
+    costCC: 460
+  },
+  {
+    id: 'recipe_gloves_quantum_grip',
+    resultItemDefId: 'gloves_quantum_grip',
+    requiredLevel: 9,
+    requiredMaterials: [
+      { itemDefId: 'optic_sensor', quantity: 3 },
+      { itemDefId: 'quantum_filament', quantity: 2 },
+      { itemDefId: 'void_alloy', quantity: 1 },
+      { itemDefId: 'armor_fiber', quantity: 8 }
+    ],
+    costCC: 2580
+  },
+  {
+    id: 'recipe_gloves_event_horizon',
+    resultItemDefId: 'gloves_event_horizon',
+    requiredLevel: 12,
+    requiredMaterials: [
+      { itemDefId: 'entropy_shard', quantity: 1 },
+      { itemDefId: 'void_alloy', quantity: 2 },
+      { itemDefId: 'quantum_filament', quantity: 4 },
+      { itemDefId: 'plasma_core', quantity: 2 }
+    ],
+    costCC: 3480
+  },
+  {
+    id: 'recipe_tool_secondary_phase_link',
+    resultItemDefId: 'tool_secondary_phase_link',
+    requiredLevel: 3,
+    requiredMaterials: [
+      { itemDefId: 'recycled_component', quantity: 4 },
+      { itemDefId: 'copper_wire', quantity: 12 },
+      { itemDefId: 'energy_cell', quantity: 8 }
+    ],
+    costCC: 620
+  },
+  {
+    id: 'recipe_tool_secondary_anchor',
+    resultItemDefId: 'tool_secondary_resonance_anchor',
+    requiredLevel: 7,
+    requiredMaterials: [
+      { itemDefId: 'optic_sensor', quantity: 2 },
+      { itemDefId: 'alien_resin', quantity: 2 },
+      { itemDefId: 'recycled_component', quantity: 9 },
+      { itemDefId: 'energy_cell', quantity: 14 }
+    ],
+    costCC: 1740
+  },
+  {
+    id: 'recipe_tool_secondary_entropic_array',
+    resultItemDefId: 'tool_secondary_entropic_array',
+    requiredLevel: 12,
+    requiredMaterials: [
+      { itemDefId: 'entropy_shard', quantity: 1 },
+      { itemDefId: 'void_alloy', quantity: 2 },
+      { itemDefId: 'optic_sensor', quantity: 4 },
+      { itemDefId: 'quantum_filament', quantity: 4 }
+    ],
+    costCC: 3360
+  },
+  {
+    id: 'recipe_suit_salvage_command',
+    resultItemDefId: 'suit_salvage_command',
+    requiredLevel: 7,
+    requiredMaterials: [
+      { itemDefId: 'armor_fiber', quantity: 7 },
+      { itemDefId: 'alien_resin', quantity: 2 },
+      { itemDefId: 'optic_sensor', quantity: 2 },
+      { itemDefId: 'recycled_component', quantity: 8 }
+    ],
+    costCC: 1880
+  },
+  {
+    id: 'recipe_backpack_salvager_frame',
+    resultItemDefId: 'backpack_salvager_frame',
+    requiredLevel: 4,
+    requiredMaterials: [
+      { itemDefId: 'armor_fiber', quantity: 5 },
+      { itemDefId: 'recycled_component', quantity: 5 },
+      { itemDefId: 'copper_wire', quantity: 14 }
+    ],
+    costCC: 880
   }
 ];
