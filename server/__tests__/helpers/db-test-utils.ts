@@ -10,6 +10,8 @@ export async function resetTestDb(): Promise<void> {
   await db.userContract.deleteMany();
   await db.extractionResult.deleteMany();
   await db.weeklyDirectiveProgress.deleteMany();
+  await db.upgradeResearchQueue.deleteMany();
+  await db.upgradeNodeProgress.deleteMany();
   await db.activeRun.deleteMany();
   await db.currencyLedger.deleteMany();
   await db.equipmentSlot_.deleteMany();

@@ -1,21 +1,37 @@
-'use server';
+﻿'use server';
 
 import 'server-only';
 
 import { revalidatePath } from 'next/cache';
 
 import { auth } from '@/server/auth/auth';
-import { PurchaseUpgradeInput, PurchaseUpgradeInputSchema } from '@/lib/validators/upgrades.validators';
-import { AccountUpgradeService } from '@/server/services/account-upgrade.service';
+import {
+  PurchaseUpgradeInput,
+  PurchaseUpgradeInputSchema,
+  StartUpgradeResearchInput,
+  StartUpgradeResearchInputSchema,
+} from '@/lib/validators/upgrades.validators';
+import { UpgradeTreeService } from '@/server/services/upgrade-tree.service';
 import { guardMutationCategory } from '@/server/services/mutation-guard.service';
 import { DomainError } from '@/server/domain/inventory/inventory.service';
-import { ActionResult, UpgradePurchaseResultDTO } from '@/types/dto.types';
+import {
+  ActionResult,
+  CancelUpgradeResearchResultDTO,
+  StartUpgradeResearchResultDTO,
+} from '@/types/dto.types';
 
-export async function purchaseUpgradeAction(
-  input: PurchaseUpgradeInput
-): Promise<ActionResult<UpgradePurchaseResultDTO>> {
+function revalidateUpgradeRelatedViews() {
+  revalidatePath('/upgrades');
+  revalidatePath('/dashboard');
+  revalidatePath('/crafting');
+  revalidatePath('/market');
+}
+
+export async function startUpgradeResearchAction(
+  input: StartUpgradeResearchInput,
+): Promise<ActionResult<StartUpgradeResearchResultDTO>> {
   try {
-    const parsedInput = PurchaseUpgradeInputSchema.parse(input);
+    const parsedInput = StartUpgradeResearchInputSchema.parse(input);
     const session = await auth();
     const userId = session?.user?.id;
 
@@ -34,9 +50,9 @@ export async function purchaseUpgradeAction(
       };
     }
 
-    const data = await AccountUpgradeService.purchaseUpgrade(userId, parsedInput.upgradeId);
+    const data = await UpgradeTreeService.startResearch(userId, parsedInput.nodeId);
 
-    revalidatePath('/dashboard');
+    revalidateUpgradeRelatedViews();
 
     return {
       success: true,
@@ -57,10 +73,74 @@ export async function purchaseUpgradeAction(
       };
     }
 
-    console.error('[purchaseUpgradeAction] Unexpected error:', error);
+    console.error('[startUpgradeResearchAction] Unexpected error:', error);
     return {
       success: false,
-      error: { code: 'INTERNAL_ERROR', message: 'Error interno al comprar mejora.' },
+      error: { code: 'INTERNAL_ERROR', message: 'Error interno al iniciar la investigación.' },
     };
   }
 }
+
+export async function cancelUpgradeResearchAction(): Promise<ActionResult<CancelUpgradeResearchResultDTO>> {
+  try {
+    const session = await auth();
+    const userId = session?.user?.id;
+
+    if (!userId) {
+      return {
+        success: false,
+        error: { code: 'UNAUTHORIZED', message: 'Usuario no autenticado.' },
+      };
+    }
+
+    const mutationGuard = guardMutationCategory('upgrade-achievement-claims');
+    if (mutationGuard.blocked) {
+      return {
+        success: false,
+        error: mutationGuard.error,
+      };
+    }
+
+    const data = await UpgradeTreeService.cancelActiveResearch(userId);
+
+    revalidateUpgradeRelatedViews();
+
+    return {
+      success: true,
+      data,
+    };
+  } catch (error) {
+    if (error instanceof DomainError) {
+      return {
+        success: false,
+        error: { code: error.code as any, message: error.message },
+      };
+    }
+
+    console.error('[cancelUpgradeResearchAction] Unexpected error:', error);
+    return {
+      success: false,
+      error: { code: 'INTERNAL_ERROR', message: 'Error interno al cancelar investigación.' },
+    };
+  }
+}
+
+/**
+ * Backward compatibility wrapper for legacy UI/tests.
+ * Maps old payload shape to the new research action.
+ */
+export async function purchaseUpgradeAction(
+  input: PurchaseUpgradeInput,
+): Promise<ActionResult<StartUpgradeResearchResultDTO>> {
+  const parsedInput = PurchaseUpgradeInputSchema.safeParse(input);
+
+  if (!parsedInput.success) {
+    return {
+      success: false,
+      error: { code: 'VALIDATION_ERROR', message: 'Datos de entrada inválidos.' },
+    };
+  }
+
+  return startUpgradeResearchAction({ nodeId: parsedInput.data.upgradeId });
+}
+

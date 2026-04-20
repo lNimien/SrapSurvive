@@ -10,6 +10,11 @@ import { ITEM_CATALOG } from '../../../config/game.config';
 import { VENDOR_CATALOG } from '../../../config/vendor.config';
 import Link from 'next/link';
 import { computeSellUnitPrice } from '../../../server/domain/economy/market.calculator';
+import { UpgradeTreeService } from '@/server/services/upgrade-tree.service';
+import {
+  applyMarketBuyPriceMultiplier,
+  applyMarketSellPriceMultiplier,
+} from '@/server/domain/progression/upgrade-tree.logic';
 
 export const metadata = {
   title: 'Mercado — Scrap & Survive',
@@ -34,6 +39,7 @@ export default async function MarketPage({ searchParams }: PageProps) {
     EconomyRepository.getCurrentBalance(userId),
     PlayerStateService.getPlayerState(userId),
   ]);
+  const upgradeProfile = await UpgradeTreeService.getRuntimeProfile(userId);
 
   const isRunActive = playerState?.activeRun?.status === 'running' || playerState?.activeRun?.status === 'catastrophe';
   
@@ -42,13 +48,17 @@ export default async function MarketPage({ searchParams }: PageProps) {
     .filter(i => !i.isEquipable && i.baseValue > 0)
     .map(item => ({
       ...item,
-      currentPrice: computeSellUnitPrice(item.baseValue)
+      currentPrice: applyMarketSellPriceMultiplier(computeSellUnitPrice(item.baseValue), upgradeProfile)
     }));
 
   // Buy tab data
-  const vendorItems = VENDOR_CATALOG.map(v => {
+  const vendorItems = VENDOR_CATALOG.filter((v) =>
+    (v.requiredAccessTier ?? 0) <= upgradeProfile.blackMarketAccessTier,
+  ).map(v => {
     const definition = ITEM_CATALOG.find(i => i.id === v.itemDefinitionId);
-    return definition ? { definition, price: v.priceCC } : null;
+    return definition
+      ? { definition, price: applyMarketBuyPriceMultiplier(v.priceCC, upgradeProfile) }
+      : null;
   }).filter(Boolean);
 
   return (

@@ -1,11 +1,10 @@
-import 'server-only';
+﻿import 'server-only';
 
 import { describe, expect, it } from 'vitest';
 
 import { db } from '@/server/db/client';
-import { UPGRADE_DEFINITION_BY_ID } from '@/config/upgrades.config';
 import { seedTestUser } from '@/server/__tests__/helpers/db-test-utils';
-import { AccountUpgradeService } from '@/server/services/account-upgrade.service';
+import { UpgradeTreeService } from '@/server/services/upgrade-tree.service';
 
 async function grantCredits(userId: string, amount: number): Promise<void> {
   const latest = await db.currencyLedger.findFirst({
@@ -26,89 +25,97 @@ async function grantCredits(userId: string, amount: number): Promise<void> {
   });
 }
 
-describe('AccountUpgradeService.purchaseUpgrade (integration)', () => {
-  it('purchases upgrade, appends PURCHASE ledger and marks as purchased', async () => {
-    const userId = 'user-upgrade-success';
-    const upgrade = UPGRADE_DEFINITION_BY_ID.upgrade_hull_stabilizers_v1;
-
+describe('UpgradeTreeService integration', () => {
+  it('starts timed research and appends purchase ledger entry', async () => {
+    const userId = 'user-upgrade-tree-start';
     await seedTestUser(userId);
     await grantCredits(userId, 500);
 
-    const purchase = await AccountUpgradeService.purchaseUpgrade(userId, upgrade.id);
-    expect(purchase.upgradeId).toBe(upgrade.id);
+    const start = await UpgradeTreeService.startResearch(userId, 'bridge_hull_stabilizers');
+
+    expect(start.nodeId).toBe('bridge_hull_stabilizers');
+    expect(start.targetLevel).toBe(1);
+
+    const queue = await db.upgradeResearchQueue.findFirst({
+      where: { id: start.queueId },
+    });
+    expect(queue).not.toBeNull();
+    expect(queue?.status).toBe('IN_PROGRESS');
 
     const purchaseEntry = await db.currencyLedger.findFirst({
       where: {
         userId,
         entryType: 'PURCHASE',
-        referenceId: `upgrade:${upgrade.id}:purchase`,
+        referenceId: {
+          startsWith: 'upgrade-tree:bridge_hull_stabilizers:lv1:start',
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
 
     expect(purchaseEntry).not.toBeNull();
-    expect(purchaseEntry?.amount).toBe(-upgrade.costCC);
-    expect(purchaseEntry?.balanceAfter).toBe(500 - upgrade.costCC);
-
-    const upgrades = await AccountUpgradeService.getUpgradesForPlayer(userId);
-    const purchased = upgrades.find((entry) => entry.id === upgrade.id);
-    expect(purchased?.purchased).toBe(true);
-
-    const auditLog = await db.auditLog.findFirst({
-      where: { userId, action: 'upgrade.purchase' },
-      orderBy: { createdAt: 'desc' },
-    });
-    expect(auditLog).not.toBeNull();
+    expect(purchaseEntry?.amount).toBeLessThan(0);
   });
 
-  it('rejects duplicate purchase and does not append another PURCHASE entry', async () => {
-    const userId = 'user-upgrade-duplicate';
-    const upgrade = UPGRADE_DEFINITION_BY_ID.upgrade_escape_protocol_v1;
-
+  it('cancels active research and grants partial refund', async () => {
+    const userId = 'user-upgrade-tree-cancel';
     await seedTestUser(userId);
     await grantCredits(userId, 500);
-    await AccountUpgradeService.purchaseUpgrade(userId, upgrade.id);
 
-    const beforeCount = await db.currencyLedger.count({
+    const start = await UpgradeTreeService.startResearch(userId, 'bridge_hull_stabilizers');
+    const cancel = await UpgradeTreeService.cancelActiveResearch(userId);
+
+    expect(cancel.queueId).toBe(start.queueId);
+    expect(cancel.refundedCC).toBeGreaterThan(0);
+
+    const queue = await db.upgradeResearchQueue.findFirst({ where: { id: start.queueId } });
+    expect(queue?.status).toBe('CANCELLED');
+
+    const refundEntry = await db.currencyLedger.findFirst({
       where: {
         userId,
-        entryType: 'PURCHASE',
-        referenceId: `upgrade:${upgrade.id}:purchase`,
+        entryType: 'SALE',
+        referenceId: {
+          startsWith: 'upgrade-tree:bridge_hull_stabilizers:lv1:cancel',
+        },
       },
+      orderBy: { createdAt: 'desc' },
     });
 
-    await expect(AccountUpgradeService.purchaseUpgrade(userId, upgrade.id)).rejects.toMatchObject({
-      code: 'VALIDATION_ERROR',
-    });
-
-    const afterCount = await db.currencyLedger.count({
-      where: {
-        userId,
-        entryType: 'PURCHASE',
-        referenceId: `upgrade:${upgrade.id}:purchase`,
-      },
-    });
-
-    expect(afterCount).toBe(beforeCount);
+    expect(refundEntry).not.toBeNull();
+    expect(refundEntry?.amount).toBe(cancel.refundedCC);
   });
 
-  it('rejects purchase with insufficient funds and leaves ledger unchanged for upgrade reference', async () => {
-    const userId = 'user-upgrade-insufficient';
-    const upgrade = UPGRADE_DEFINITION_BY_ID.upgrade_salvage_optimizer_v1;
-
+  it('materializes completed research into node progress during read sync', async () => {
+    const userId = 'user-upgrade-tree-complete';
     await seedTestUser(userId);
+    await grantCredits(userId, 500);
 
-    await expect(AccountUpgradeService.purchaseUpgrade(userId, upgrade.id)).rejects.toMatchObject({
-      code: 'INSUFFICIENT_BALANCE',
-    });
+    const start = await UpgradeTreeService.startResearch(userId, 'bridge_hull_stabilizers');
 
-    const purchaseCount = await db.currencyLedger.count({
-      where: {
-        userId,
-        referenceId: `upgrade:${upgrade.id}:purchase`,
+    await db.upgradeResearchQueue.update({
+      where: { id: start.queueId },
+      data: {
+        startedAt: new Date(Date.now() - 180_000),
+        completesAt: new Date(Date.now() - 60_000),
       },
     });
 
-    expect(purchaseCount).toBe(0);
+    const tree = await UpgradeTreeService.getUpgradeTreeForPlayer(userId);
+    const node = tree.nodes.find((entry) => entry.id === 'bridge_hull_stabilizers');
+
+    expect(node?.currentLevel).toBe(1);
+    expect(tree.activeResearch).toBeNull();
+
+    const persistedProgress = await db.upgradeNodeProgress.findUnique({
+      where: {
+        userId_nodeId: {
+          userId,
+          nodeId: 'bridge_hull_stabilizers',
+        },
+      },
+    });
+    expect(persistedProgress?.level).toBe(1);
   });
 });
+

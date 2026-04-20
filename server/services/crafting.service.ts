@@ -1,8 +1,11 @@
-import 'server-only';
+﻿import 'server-only';
+
 import { db } from '../db/client';
 import { CraftingCalculator } from '../domain/inventory/crafting.calculator';
 import { DomainError } from '../domain/inventory/inventory.service';
 import { ITEM_CATALOG, ZONE_CONFIGS } from '../../config/game.config';
+import { UpgradeTreeService } from './upgrade-tree.service';
+import { applyCraftingCostMultiplier } from '../domain/progression/upgrade-tree.logic';
 
 type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
 
@@ -67,14 +70,15 @@ export const CraftingService = {
    */
   async craftItem(userId: string, recipeId: string) {
     const now = new Date();
+    const runtimeProfile = await UpgradeTreeService.getRuntimeProfile(userId);
 
     return await db.$transaction(async (tx) => {
       // 1. Check for active run
       const activeRun = await tx.activeRun.findUnique({
-        where: { userId }
+        where: { userId },
       });
       if (activeRun) {
-        throw new DomainError('RUN_ALREADY_ACTIVE', 'No puedes fabricar mientras estás en una expedición.');
+        throw new DomainError('RUN_ALREADY_ACTIVE', 'No puedes fabricar mientras estas en una expedicion.');
       }
 
       // 2. Validate recipe
@@ -82,6 +86,7 @@ export const CraftingService = {
       if (!recipe) {
         throw new DomainError('NOT_FOUND', 'Receta no encontrada.');
       }
+      const effectiveCostCC = applyCraftingCostMultiplier(recipe.costCC, runtimeProfile);
 
       const definitionIdMap = await ensureItemDefinitionIds(tx, [
         ...recipe.requiredMaterials.map((material) => material.itemDefId),
@@ -96,8 +101,8 @@ export const CraftingService = {
       const [inventory, latestLedger, progression] = await Promise.all([
         tx.inventoryItem.findMany({ where: { userId } }),
         tx.currencyLedger.findFirst({
-            where: { userId },
-            orderBy: { createdAt: 'desc' }
+          where: { userId },
+          orderBy: { createdAt: 'desc' },
         }),
         tx.userProgression.findUnique({
           where: { userId },
@@ -109,6 +114,7 @@ export const CraftingService = {
       const lockReason = CraftingCalculator.getRecipeLockReason(recipe, {
         playerLevel,
         highestUnlockedZoneLevel: getHighestUnlockedZoneLevel(playerLevel),
+        workshopTierBoost: runtimeProfile.workshopTierBoost,
       });
       if (lockReason) {
         throw new DomainError('VALIDATION_ERROR', lockReason);
@@ -121,57 +127,69 @@ export const CraftingService = {
       }));
 
       const { success, hasCC, missingMaterials } = CraftingCalculator.canAfford(
-        recipe,
+        {
+          ...recipe,
+          costCC: effectiveCostCC,
+        },
         affordabilityInventory,
         currentBalance,
       );
 
       if (!success) {
-        if (!hasCC) throw new DomainError('INSUFFICIENT_FUNDS', `Créditos insuficientes. Necesitas ${recipe.costCC} CC.`);
-        throw new DomainError('VALIDATION_ERROR', `Faltan materiales: ${missingMaterials.map(m => m.itemDefId).join(', ')}`);
+        if (!hasCC) {
+          throw new DomainError('INSUFFICIENT_FUNDS', `Creditos insuficientes. Necesitas ${effectiveCostCC} CC.`);
+        }
+
+        throw new DomainError(
+          'VALIDATION_ERROR',
+          `Faltan materiales: ${missingMaterials.map((material) => material.itemDefId).join(', ')}`,
+        );
       }
 
-      // 4. Consume Credits
+      // 4. Consume credits
       await tx.currencyLedger.create({
         data: {
           userId,
-          amount: -recipe.costCC,
-          balanceAfter: currentBalance - recipe.costCC,
+          amount: -effectiveCostCC,
+          balanceAfter: currentBalance - effectiveCostCC,
           entryType: 'PURCHASE',
-          referenceId: recipe.id
-        }
+          referenceId: recipe.id,
+        },
       });
 
-      // 5. Consume Materials
+      // 5. Consume materials
       for (const req of recipe.requiredMaterials) {
         const itemDefinitionId = definitionIdMap.get(req.itemDefId);
         if (!itemDefinitionId) {
-          throw new DomainError('NOT_FOUND', `Definición de item no encontrada: ${req.itemDefId}`);
+          throw new DomainError('NOT_FOUND', `Definicion de item no encontrada: ${req.itemDefId}`);
         }
 
-        const inv = inventory.find(i => i.itemDefinitionId === itemDefinitionId);
-        if (!inv) continue; // Should not happen due to check above
+        const inv = inventory.find((item) => item.itemDefinitionId === itemDefinitionId);
+        if (!inv) continue;
 
         if (inv.quantity === req.quantity) {
           await tx.inventoryItem.delete({ where: { id: inv.id } });
         } else {
           await tx.inventoryItem.update({
             where: { id: inv.id },
-            data: { quantity: { decrement: req.quantity } }
+            data: { quantity: { decrement: req.quantity } },
           });
         }
       }
 
-      // 6. Grant Result Item
-      const resultDef = ITEM_CATALOG.find(i => i.id === recipe.resultItemDefId);
-      if (!resultDef) throw new DomainError('NOT_FOUND', 'El objeto resultante no existe en el catálogo.');
+      // 6. Grant result item
+      const resultDef = ITEM_CATALOG.find((item) => item.id === recipe.resultItemDefId);
+      if (!resultDef) {
+        throw new DomainError('NOT_FOUND', 'El objeto resultante no existe en el catalogo.');
+      }
+
       const resultDefinitionId = definitionIdMap.get(resultDef.id);
       if (!resultDefinitionId) {
-        throw new DomainError('NOT_FOUND', `Definición de item no encontrada: ${resultDef.id}`);
+        throw new DomainError('NOT_FOUND', `Definicion de item no encontrada: ${resultDef.id}`);
       }
 
       const existingResult = await tx.inventoryItem.findUnique({
-        where: { userId_itemDefinitionId: { userId, itemDefinitionId: resultDefinitionId } }
+        where: { userId_itemDefinitionId: { userId, itemDefinitionId: resultDefinitionId } },
       });
 
       let craftResult;
@@ -185,7 +203,7 @@ export const CraftingService = {
       if (existingResult) {
         craftResult = await tx.inventoryItem.update({
           where: { id: existingResult.id },
-          data: { quantity: { increment: 1 }, acquiredAt: now }
+          data: { quantity: { increment: 1 }, acquiredAt: now },
         });
       } else {
         craftResult = await tx.inventoryItem.create({
@@ -193,21 +211,22 @@ export const CraftingService = {
             userId,
             itemDefinitionId: resultDefinitionId,
             quantity: 1,
-            acquiredAt: now
-          }
+            acquiredAt: now,
+          },
         });
       }
 
-      // 7. Audit Log
+      // 7. Audit log
       await tx.auditLog.create({
         data: {
-            userId,
-            action: 'inventory.craft',
-            payload: { recipeId, resultItemDefinitionId: resultDef.id, costCC: recipe.costCC }
-        }
+          userId,
+          action: 'inventory.craft',
+          payload: { recipeId, resultItemDefinitionId: resultDef.id, costCC: effectiveCostCC },
+        },
       });
 
       return craftResult;
     });
-  }
+  },
 };
+

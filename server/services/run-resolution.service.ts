@@ -18,7 +18,7 @@ import {
 } from '../domain/run/run.calculator';
 import { calculateLevelProgress } from '../domain/progression/progression.calculator';
 import { computeLevelRewardBonus } from '../domain/progression/reward-bonus.logic';
-import { AccountUpgradeService } from './account-upgrade.service';
+import { UpgradeTreeService } from './upgrade-tree.service';
 import { RunMode } from '../../types/game.types';
 
 type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
@@ -190,7 +190,7 @@ export const RunResolutionService = {
       baseXpPerSecond: selectedZoneConfig.baseXpPerSecond,
     };
 
-    const upgradedDangerConfig = await AccountUpgradeService.applyUpgradesToDangerConfig(userId, baseDangerConfig);
+    const upgradedDangerConfig = await UpgradeTreeService.applyUpgradeProfileToDangerConfig(userId, baseDangerConfig);
     const dangerConfig = applyEquipmentToDangerConfig(upgradedDangerConfig, equipmentSnapshot);
     const normalizedRunMode = resolveRunMode(runMode);
     const runDangerConfigSnapshot = {

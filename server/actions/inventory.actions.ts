@@ -28,6 +28,8 @@ import { Prisma } from '@prisma/client';
 import { UserRepository } from '../repositories/user.repository';
 import { CraftingCalculator } from '../domain/inventory/crafting.calculator';
 import { resolveItemTier } from '@/lib/utils/rarity';
+import { UpgradeTreeService } from '../services/upgrade-tree.service';
+import { applyCraftingCostMultiplier } from '../domain/progression/upgrade-tree.logic';
 
 function getHighestUnlockedZoneLevel(playerLevel: number): number {
   return Math.max(
@@ -210,14 +212,17 @@ export async function getRecipesAction(): Promise<ActionResult<RecipeDTO[]>> {
       EconomyRepository.getCurrentBalance(userId),
       UserRepository.getUserProfile(userId),
     ]);
+    const upgradeProfile = await UpgradeTreeService.getRuntimeProfile(userId);
     const playerLevel = profile?.level ?? 1;
     const highestUnlockedZoneLevel = getHighestUnlockedZoneLevel(playerLevel);
     const unlockedTiers = CraftingCalculator.getUnlockedCraftingTiers({
       playerLevel,
       highestUnlockedZoneLevel,
+      workshopTierBoost: upgradeProfile.workshopTierBoost,
     });
 
     const recipeDTOs: RecipeDTO[] = CRAFTING_RECIPES.map(recipe => {
+      const effectiveCostCC = applyCraftingCostMultiplier(recipe.costCC, upgradeProfile);
       const resultDef = ITEM_CATALOG.find(i => i.id === recipe.resultItemDefId)!;
       const recipeTier = resolveItemTier(resultDef.rarity as unknown as ItemRarityDTO);
       const requiredTier = CraftingCalculator.getRequiredTier(recipe.requiredLevel);
@@ -237,10 +242,11 @@ export async function getRecipesAction(): Promise<ActionResult<RecipeDTO[]>> {
       });
 
       const canAffordMaterials = ingredients.every(i => i.currentQuantity >= i.requiredQuantity);
-      const canAffordCC = balance >= recipe.costCC;
+      const canAffordCC = balance >= effectiveCostCC;
       const lockReason = CraftingCalculator.getRecipeLockReason(recipe, {
         playerLevel,
         highestUnlockedZoneLevel,
+        workshopTierBoost: upgradeProfile.workshopTierBoost,
       });
 
       return {
@@ -263,7 +269,7 @@ export async function getRecipesAction(): Promise<ActionResult<RecipeDTO[]>> {
           configOptions: resultDef.configOptions
         },
         ingredients,
-        costCC: recipe.costCC,
+        costCC: effectiveCostCC,
         canAffordCC,
         canAffordMaterials
       };

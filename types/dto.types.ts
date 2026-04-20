@@ -234,6 +234,84 @@ export interface UpgradePurchaseResultDTO {
   newBalance: number;
 }
 
+export type UpgradeBranchDTO = 'BRIDGE' | 'WORKSHOP' | 'BLACK_MARKET';
+export type UpgradeNodeStateDTO = 'locked' | 'available' | 'in_progress' | 'unlocked' | 'maxed';
+
+export interface UpgradeNodeEffectPreviewDTO {
+  label: string;
+  value: string;
+}
+
+export interface UpgradeNodeDTO {
+  id: string;
+  branch: UpgradeBranchDTO;
+  tier: number;
+  lane: number;
+  parents: string[];
+  displayName: string;
+  description: string;
+  icon: string;
+  rarity: 'UTILITY' | 'TACTICAL' | 'ASPIRATIONAL';
+  category: string;
+  currentLevel: number;
+  maxLevel: number;
+  nextLevel: number | null;
+  nextCostCC: number | null;
+  nextUnlockDurationSec: number | null;
+  state: UpgradeNodeStateDTO;
+  affordable: boolean;
+  requirementsMet: boolean;
+  effectsPreview: UpgradeNodeEffectPreviewDTO[];
+}
+
+export interface UpgradeBranchSummaryDTO {
+  branch: UpgradeBranchDTO;
+  label: string;
+  description: string;
+  unlockedLevels: number;
+  totalLevels: number;
+  completionRatio: number;
+}
+
+export interface UpgradeResearchActiveDTO {
+  queueId: string;
+  nodeId: string;
+  nodeName: string;
+  branch: UpgradeBranchDTO;
+  targetLevel: number;
+  startedAt: string;
+  completesAt: string;
+  progressPercent: number;
+  remainingSeconds: number;
+  costCC: number;
+  refundableCC: number;
+}
+
+export interface UpgradeTreeDTO {
+  currencyBalance: number;
+  nodes: UpgradeNodeDTO[];
+  branches: UpgradeBranchSummaryDTO[];
+  activeResearch: UpgradeResearchActiveDTO | null;
+  availableCount: number;
+  completedLevelCount: number;
+  totalLevelCount: number;
+}
+
+export interface StartUpgradeResearchResultDTO {
+  queueId: string;
+  nodeId: string;
+  targetLevel: number;
+  completesAt: string;
+  newBalance: number;
+}
+
+export interface CancelUpgradeResearchResultDTO {
+  queueId: string;
+  nodeId: string;
+  refundedCC: number;
+  newBalance: number;
+}
+
 export type AchievementTriggerDTO =
   | { type: 'EXTRACTION_RESULTS_COUNT'; target: number }
   | { type: 'CATASTROPHE_OCCURRED_COUNT'; target: number }

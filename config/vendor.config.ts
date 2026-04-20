@@ -3,6 +3,7 @@ import { ID_EXTRACTION_INSURANCE } from './game.config';
 export interface VendorItem {
   itemDefinitionId: string;
   priceCC: number;
+  requiredAccessTier?: number;
 }
 
 /**
@@ -49,14 +50,17 @@ export const VENDOR_CATALOG: VendorItem[] = [
   {
     itemDefinitionId: 'plasma_core',
     priceCC: 320,
+    requiredAccessTier: 1,
   },
   {
     itemDefinitionId: 'quantum_filament',
     priceCC: 360,
+    requiredAccessTier: 2,
   },
   {
     itemDefinitionId: 'void_alloy',
     priceCC: 760,
+    requiredAccessTier: 3,
   },
   {
     itemDefinitionId: 'basic_work_helmet',
