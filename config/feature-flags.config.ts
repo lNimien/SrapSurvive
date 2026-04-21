@@ -12,6 +12,7 @@ export interface FeatureFlags {
   killSwitchCraftingMutations: boolean;
   killSwitchContractsMutations: boolean;
   killSwitchUpgradeAchievementClaims: boolean;
+  mutatorTuningDbPrimary: boolean;
 }
 
 const TRUE_LITERALS = new Set(['1', 'true', 'yes', 'on']);
@@ -42,6 +43,7 @@ export const featureFlags: FeatureFlags = {
   killSwitchCraftingMutations: readFlag('FEATURE_KILL_SWITCH_CRAFTING_MUTATIONS'),
   killSwitchContractsMutations: readFlag('FEATURE_KILL_SWITCH_CONTRACTS_MUTATIONS'),
   killSwitchUpgradeAchievementClaims: readFlag('FEATURE_KILL_SWITCH_UPGRADE_ACHIEVEMENT_CLAIMS'),
+  mutatorTuningDbPrimary: readFlag('FEATURE_MUTATOR_TUNING_DB_PRIMARY'),
 };
 
 export function isAnyD3PanelEnabled(): boolean {

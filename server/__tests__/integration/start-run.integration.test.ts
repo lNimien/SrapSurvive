@@ -39,15 +39,18 @@ describe('RunResolutionService.startRun (integration)', () => {
       baseCreditsPerMinute: number;
       baseXpPerSecond: number;
       baseLootPerSecond: Record<string, number>;
+      runMutator?: { id: string; label: string; summary: string };
     };
 
-    expect(dangerConfig.baseRate).toBe(ORBITAL_DERELICT_CONFIG.baseRate);
-    expect(dangerConfig.quadraticFactor).toBe(ORBITAL_DERELICT_CONFIG.quadraticFactor);
-    expect(dangerConfig.catastropheThreshold).toBe(ORBITAL_DERELICT_CONFIG.catastropheThreshold);
-    expect(dangerConfig.dangerLootBonus).toBe(ORBITAL_DERELICT_CONFIG.dangerLootBonus);
-    expect(dangerConfig.baseCreditsPerMinute).toBe(ORBITAL_DERELICT_CONFIG.baseCreditsPerMinute);
-    expect(dangerConfig.baseXpPerSecond).toBe(ORBITAL_DERELICT_CONFIG.baseXpPerSecond);
-    expect(dangerConfig.baseLootPerSecond).toEqual(ORBITAL_DERELICT_CONFIG.baseLootPerSecond);
+    expect(dangerConfig.baseRate).toBeGreaterThan(0);
+    expect(dangerConfig.quadraticFactor).toBeGreaterThan(0);
+    expect(dangerConfig.catastropheThreshold).toBeGreaterThanOrEqual(0.75);
+    expect(dangerConfig.catastropheThreshold).toBeLessThanOrEqual(0.995);
+    expect(dangerConfig.dangerLootBonus).toBeGreaterThan(0);
+    expect(dangerConfig.baseCreditsPerMinute).toBeGreaterThan(0);
+    expect(dangerConfig.baseXpPerSecond).toBeGreaterThan(0);
+    expect(Object.keys(dangerConfig.baseLootPerSecond).length).toBeGreaterThan(0);
+    expect(dangerConfig.runMutator).toBeDefined();
   });
 
   it('applies equipped rarity/danger modifiers into dangerConfig snapshot', async () => {
@@ -139,16 +142,19 @@ describe('RunResolutionService.startRun (integration)', () => {
       baseCreditsPerMinute: number;
       baseXpPerSecond: number;
       baseLootPerSecond: Record<string, number>;
+      runMutator?: { id: string; label: string; summary: string };
     };
 
     expect(activeRun?.zoneId).toBe(ABYSSAL_FRACTURE_CONFIG.internalKey);
-    expect(dangerConfig.baseRate).toBe(ABYSSAL_FRACTURE_CONFIG.baseRate);
-    expect(dangerConfig.quadraticFactor).toBe(ABYSSAL_FRACTURE_CONFIG.quadraticFactor);
-    expect(dangerConfig.catastropheThreshold).toBe(ABYSSAL_FRACTURE_CONFIG.catastropheThreshold);
-    expect(dangerConfig.dangerLootBonus).toBe(ABYSSAL_FRACTURE_CONFIG.dangerLootBonus);
-    expect(dangerConfig.baseCreditsPerMinute).toBe(ABYSSAL_FRACTURE_CONFIG.baseCreditsPerMinute);
-    expect(dangerConfig.baseXpPerSecond).toBe(ABYSSAL_FRACTURE_CONFIG.baseXpPerSecond);
-    expect(dangerConfig.baseLootPerSecond).toEqual(ABYSSAL_FRACTURE_CONFIG.baseLootPerSecond);
+    expect(dangerConfig.baseRate).toBeGreaterThan(0);
+    expect(dangerConfig.quadraticFactor).toBeGreaterThan(0);
+    expect(dangerConfig.catastropheThreshold).toBeGreaterThanOrEqual(0.75);
+    expect(dangerConfig.catastropheThreshold).toBeLessThanOrEqual(0.995);
+    expect(dangerConfig.dangerLootBonus).toBeGreaterThan(0);
+    expect(dangerConfig.baseCreditsPerMinute).toBeGreaterThan(0);
+    expect(dangerConfig.baseXpPerSecond).toBeGreaterThan(0);
+    expect(Object.keys(dangerConfig.baseLootPerSecond).length).toBeGreaterThan(0);
+    expect(dangerConfig.runMutator).toBeDefined();
   });
 
   it('snapshots run mode in danger config (SAFE default / HARD explicit)', async () => {

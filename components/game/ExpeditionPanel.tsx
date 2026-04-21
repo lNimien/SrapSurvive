@@ -13,6 +13,8 @@ import { AlertTriangle, ShieldCheck, Zap } from 'lucide-react';
 import { Button } from '../ui/button';
 import { cn } from '@/lib/utils/cn';
 import { getActivityLine, getExpeditionStateMeta, getExpeditionVisualState } from '@/lib/utils/expedition-ui';
+import { estimateMarginalLootWindows, ProjectionRisk } from '@/lib/utils/extraction-estimation';
+import { Badge } from '@/components/ui/badge';
 
 interface ExpeditionPanelProps {
   activeRun: RunStateDTO;
@@ -21,7 +23,7 @@ interface ExpeditionPanelProps {
 
 export function ExpeditionPanel({ activeRun: initialActiveRun, onExtractionResult }: ExpeditionPanelProps) {
   const { toast } = useToast();
-  const polledRun = useRunPolling(initialActiveRun);
+  const { runState: polledRun, previousRunState } = useRunPolling(initialActiveRun);
   const visualElapsed = useCountdown(polledRun.elapsedSeconds || 0, polledRun.status !== 'idle');
   const visualDanger = useDangerInterpolation(polledRun);
   
@@ -40,6 +42,11 @@ export function ExpeditionPanel({ activeRun: initialActiveRun, onExtractionResul
   const visualState = getExpeditionVisualState(visualDanger, isCatastrophe);
   const visualStateMeta = getExpeditionStateMeta(visualState);
   const activityLine = getActivityLine(visualState, activityTick);
+  const estimatedLootWindows = estimateMarginalLootWindows({
+    current: polledRun,
+    previous: previousRunState,
+    catastropheThreshold: polledRun.catastropheThreshold,
+  });
 
   useEffect(() => {
     const timer = setInterval(() => setActivityTick((prev) => prev + 1), 3200);
@@ -67,6 +74,18 @@ export function ExpeditionPanel({ activeRun: initialActiveRun, onExtractionResul
     } finally {
       setIsResolving(false);
     }
+  };
+
+  const projectionRiskLabel: Record<ProjectionRisk, string> = {
+    safe: 'Riesgo controlado',
+    'near-threshold': 'Cerca del umbral',
+    'crosses-threshold': 'Cruza umbral',
+  };
+
+  const projectionRiskClass: Record<ProjectionRisk, string> = {
+    safe: 'border-emerald-500/50 bg-emerald-500/10 text-emerald-300',
+    'near-threshold': 'border-amber-500/60 bg-amber-500/15 text-amber-300',
+    'crosses-threshold': 'border-destructive/60 bg-destructive/15 text-destructive',
   };
 
   return (
@@ -188,7 +207,12 @@ export function ExpeditionPanel({ activeRun: initialActiveRun, onExtractionResul
         </section>
 
         <div className="py-2">
-          <DangerMeter dangerLevel={visualDanger} status={polledRun.status} trend={dangerTrend} />
+          <DangerMeter
+            dangerLevel={visualDanger}
+            status={polledRun.status}
+            trend={dangerTrend}
+            catastropheThreshold={polledRun.catastropheThreshold}
+          />
         </div>
 
         <section className="grid grid-cols-1 md:grid-cols-3 gap-3" aria-label="Telemetría continua de amenaza">
@@ -203,6 +227,46 @@ export function ExpeditionPanel({ activeRun: initialActiveRun, onExtractionResul
           <div className="border border-primary/15 bg-primary/5 px-3 py-2">
             <p className="text-[10px] font-mono uppercase tracking-widest text-primary/60">Live Tick</p>
             <p className="font-mono text-lg text-primary">{visualElapsed}s</p>
+          </div>
+        </section>
+
+        {polledRun.runMutator ? (
+          <section
+            className="border border-fuchsia-500/30 bg-fuchsia-500/8 p-4 space-y-2"
+            aria-label="Mutador táctico activo"
+          >
+            <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-fuchsia-200/90">Mutador táctico activo</p>
+            <p className="text-sm font-mono text-fuchsia-100">{polledRun.runMutator.label}</p>
+            <p className="text-xs font-mono text-fuchsia-100/80">{polledRun.runMutator.summary}</p>
+          </section>
+        ) : null}
+
+        <section
+          className="border border-primary/15 bg-primary/5 p-4 space-y-3"
+          aria-label="Estimaciones de ganancia marginal"
+        >
+          <div>
+            <p className="text-[10px] font-mono uppercase tracking-[0.22em] text-primary/60">Decisión táctica</p>
+            <p className="text-xs font-mono text-muted-foreground">
+              Estimado según telemetría reciente (no autoritativo del servidor).
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {[estimatedLootWindows.plus10, estimatedLootWindows.plus30].map((estimate) => (
+              <div key={estimate.waitSeconds} className="border border-primary/15 bg-background/70 px-3 py-3 space-y-2">
+                <p className="text-[10px] font-mono uppercase tracking-widest text-primary/60">Estimado +{estimate.waitSeconds}s</p>
+                <p className="font-mono text-lg text-primary">≈ +{estimate.estimatedLootUnits} unidades</p>
+                <Badge variant="outline" className={cn('text-[10px] uppercase tracking-widest', projectionRiskClass[estimate.projectedRisk])}>
+                  {projectionRiskLabel[estimate.projectedRisk]}
+                </Badge>
+                {!estimate.hasEnoughData && (
+                  <p className="text-[10px] font-mono uppercase tracking-[0.18em] text-muted-foreground">
+                    Esperando segundo snapshot para estimar.
+                  </p>
+                )}
+              </div>
+            ))}
           </div>
         </section>
 

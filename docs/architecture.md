@@ -931,6 +931,42 @@ updatedAt        DateTime              @updatedAt
 @@index([userId, weekStart, status])
 ```
 
+#### `MutatorTuningOverride`
+```
+id                         String   @id @default(cuid())
+mutatorId                  String
+runMode                    String   // SAFE | HARD
+rewardDeltaPercent         Int      @default(0)
+dangerPressureDeltaPercent Int      @default(0)
+version                    Int      @default(1)
+updatedByUserId            String?
+createdAt                  DateTime @default(now())
+updatedAt                  DateTime @updatedAt
+
+@@unique([mutatorId, runMode])
+@@index([runMode])
+@@index([updatedAt(sort: Desc)])
+```
+
+#### `MutatorTuningHistory`
+```
+id                        String   @id @default(cuid())
+mutatorId                 String
+runMode                   String   // SAFE | HARD
+actionType                String   // buff_difficulty | nerf_rewards | hold
+suggestedDeltaPercent     Int      @default(0)
+beforeRewardDeltaPercent  Int      @default(0)
+beforeDangerDeltaPercent  Int      @default(0)
+afterRewardDeltaPercent   Int      @default(0)
+afterDangerDeltaPercent   Int      @default(0)
+appliedByUserId           String?
+sourceGeneratedAt         DateTime?
+createdAt                 DateTime @default(now())
+
+@@index([mutatorId, runMode, createdAt(sort: Desc)])
+@@index([createdAt(sort: Desc)])
+```
+
 ### Índices críticos
 
 | Tabla | Índice | Por qué |
@@ -944,6 +980,8 @@ updatedAt        DateTime              @updatedAt
 | `ExtractionResult` | `(userId, createdAt DESC)` | Historial de runs |
 | `WeeklyDirectiveProgress` | `(userId, directiveKey, weekStart)` unique | Unicidad por usuario/directiva/semana e idempotencia de claim |
 | `WeeklyDirectiveProgress` | `(userId, weekStart, status)` | Panel semanal por estado (`IN_PROGRESS/CLAIMABLE/CLAIMED`) |
+| `MutatorTuningOverride` | `(mutatorId, runMode)` unique | Perfil activo único por mutador+modo |
+| `MutatorTuningHistory` | `(mutatorId, runMode, createdAt DESC)` | Historial operativo y diffs por ventana |
 | `AuditLog` | `(userId, action, createdAt)` | Debugging |
 
 ---

@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { selectWeightedReward, toProbabilityPercent } from '../crates.logic';
+import {
+  computeDynamicCratePrice,
+  computePityState,
+  isEpicOrHigherRarity,
+  selectWeightedReward,
+  toProbabilityPercent,
+} from '../crates.logic';
 
 describe('crates.logic', () => {
   it('selects weighted rewards and quantity within range', () => {
@@ -29,5 +35,22 @@ describe('crates.logic', () => {
     expect(toProbabilityPercent(0, 100)).toBe(0);
     expect(toProbabilityPercent(3, 0)).toBe(0);
   });
-});
 
+  it('scales crate price per open with cap', () => {
+    expect(computeDynamicCratePrice(100, 0, { incrementPerOpenPercent: 15, maxMultiplierPercent: 220 })).toBe(100);
+    expect(computeDynamicCratePrice(100, 2, { incrementPerOpenPercent: 15, maxMultiplierPercent: 220 })).toBe(130);
+    expect(computeDynamicCratePrice(100, 20, { incrementPerOpenPercent: 15, maxMultiplierPercent: 220 })).toBe(220);
+  });
+
+  it('computes pity state and trigger correctly', () => {
+    expect(computePityState(6, 4)).toMatchObject({ pityToEpic: 2, shouldForceEpic: false });
+    expect(computePityState(6, 6)).toMatchObject({ pityToEpic: 0, shouldForceEpic: true });
+  });
+
+  it('detects epic-or-higher rarities', () => {
+    expect(isEpicOrHigherRarity('COMMON')).toBe(false);
+    expect(isEpicOrHigherRarity('EPIC')).toBe(true);
+    expect(isEpicOrHigherRarity('LEGENDARY')).toBe(true);
+    expect(isEpicOrHigherRarity('CORRUPTED')).toBe(true);
+  });
+});

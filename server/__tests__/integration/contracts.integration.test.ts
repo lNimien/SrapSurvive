@@ -5,6 +5,10 @@ import { describe, expect, it } from 'vitest';
 import { db } from '@/server/db/client';
 import { seedTestUser } from '@/server/__tests__/helpers/db-test-utils';
 import { ContractService } from '@/server/services/contract.service';
+import {
+  buildContractChainBonusReference,
+  buildContractChainSnapshot,
+} from '@/server/domain/contract/contract-chain';
 
 async function grantCredits(userId: string, amount: number): Promise<void> {
   const latest = await db.currencyLedger.findFirst({
@@ -241,6 +245,207 @@ describe('ContractService.deliverMaterial (integration)', () => {
     });
 
     expect(refreshPurchaseCount).toBe(1);
+  });
+
+  it('scales refresh cost on repeated daily refreshes', async () => {
+    const userId = 'user-contract-refresh-scaled-cost';
+
+    await seedTestUser(userId);
+    await grantCredits(userId, 1000);
+    await ContractService.ensureDailyContracts(userId);
+
+    await ContractService.refreshContracts(userId, 'refresh-scaled-1');
+    await ContractService.refreshContracts(userId, 'refresh-scaled-2');
+
+    const refreshEntries = await db.currencyLedger.findMany({
+      where: {
+        userId,
+        referenceId: { startsWith: 'contract-refresh:' },
+      },
+      orderBy: { createdAt: 'asc' },
+      select: { amount: true },
+    });
+
+    expect(refreshEntries).toHaveLength(2);
+    expect(refreshEntries[0]?.amount).toBe(-85);
+    expect(refreshEntries[1]?.amount).toBe(-120);
+  });
+
+  it('grants chain final bonus once after completing all required stages', async () => {
+    const userId = 'user-contract-chain-bonus';
+    const baseTime = new Date('2026-04-21T10:00:00.000Z');
+
+    await seedTestUser(userId);
+
+    const stagedContracts = await Promise.all([
+      db.userContract.create({
+        data: {
+          userId,
+          requiredItemDefId: 'scrap_metal',
+          requiredQuantity: 2,
+          currentQuantity: 0,
+          rewardCC: 100,
+          rewardXP: 140,
+          expiresAt: new Date('2026-04-21T23:59:59.000Z'),
+          status: 'ACTIVE',
+          createdAt: new Date(baseTime.getTime()),
+        },
+      }),
+      db.userContract.create({
+        data: {
+          userId,
+          requiredItemDefId: 'scrap_metal',
+          requiredQuantity: 2,
+          currentQuantity: 0,
+          rewardCC: 110,
+          rewardXP: 150,
+          expiresAt: new Date('2026-04-21T23:59:59.000Z'),
+          status: 'ACTIVE',
+          createdAt: new Date(baseTime.getTime() + 60_000),
+        },
+      }),
+      db.userContract.create({
+        data: {
+          userId,
+          requiredItemDefId: 'scrap_metal',
+          requiredQuantity: 2,
+          currentQuantity: 0,
+          rewardCC: 130,
+          rewardXP: 170,
+          expiresAt: new Date('2026-04-21T23:59:59.000Z'),
+          status: 'ACTIVE',
+          createdAt: new Date(baseTime.getTime() + 120_000),
+        },
+      }),
+    ]);
+
+    const chainSnapshot = buildContractChainSnapshot(userId, stagedContracts, new Date('2026-04-21T11:00:00.000Z'));
+    expect(chainSnapshot).not.toBeNull();
+    if (!chainSnapshot) {
+      throw new Error('Expected a chain snapshot for deterministic chain contracts.');
+    }
+
+    await db.inventoryItem.create({
+      data: {
+        userId,
+        itemDefinitionId: 'scrap_metal',
+        quantity: chainSnapshot.stageCount * 2,
+      },
+    });
+
+    for (const chainStage of chainSnapshot.chainContracts) {
+      await ContractService.deliverMaterial(userId, chainStage.id, 2);
+    }
+
+    const chainBonusReference = buildContractChainBonusReference(userId, chainSnapshot.dateSeed);
+    const chainBonusEntries = await db.currencyLedger.findMany({
+      where: {
+        userId,
+        entryType: 'CONTRACT_REWARD',
+        referenceId: chainBonusReference,
+      },
+    });
+
+    expect(chainBonusEntries).toHaveLength(1);
+    expect(chainBonusEntries[0]?.amount).toBe(chainSnapshot.bonus.rewardCC);
+
+    await expect(
+      ContractService.deliverMaterial(
+        userId,
+        chainSnapshot.chainContracts[chainSnapshot.chainContracts.length - 1].id,
+        1,
+      ),
+    ).rejects.toMatchObject({ code: 'EXPIRED' });
+
+    const chainBonusEntriesAfterRetry = await db.currencyLedger.count({
+      where: {
+        userId,
+        entryType: 'CONTRACT_REWARD',
+        referenceId: chainBonusReference,
+      },
+    });
+
+    expect(chainBonusEntriesAfterRetry).toBe(1);
+  });
+
+  it('does not grant chain bonus when one chain stage is expired', async () => {
+    const userId = 'user-contract-chain-expired';
+    const baseTime = new Date('2026-04-21T09:00:00.000Z');
+
+    await seedTestUser(userId);
+
+    const stagedContracts = await Promise.all([
+      db.userContract.create({
+        data: {
+          userId,
+          requiredItemDefId: 'scrap_metal',
+          requiredQuantity: 1,
+          currentQuantity: 0,
+          rewardCC: 90,
+          rewardXP: 120,
+          expiresAt: new Date('2026-04-21T09:30:00.000Z'),
+          status: 'EXPIRED',
+          createdAt: new Date(baseTime.getTime()),
+        },
+      }),
+      db.userContract.create({
+        data: {
+          userId,
+          requiredItemDefId: 'scrap_metal',
+          requiredQuantity: 1,
+          currentQuantity: 0,
+          rewardCC: 100,
+          rewardXP: 130,
+          expiresAt: new Date('2026-04-21T23:59:59.000Z'),
+          status: 'ACTIVE',
+          createdAt: new Date(baseTime.getTime() + 60_000),
+        },
+      }),
+      db.userContract.create({
+        data: {
+          userId,
+          requiredItemDefId: 'scrap_metal',
+          requiredQuantity: 1,
+          currentQuantity: 0,
+          rewardCC: 110,
+          rewardXP: 140,
+          expiresAt: new Date('2026-04-21T23:59:59.000Z'),
+          status: 'ACTIVE',
+          createdAt: new Date(baseTime.getTime() + 120_000),
+        },
+      }),
+    ]);
+
+    const chainSnapshot = buildContractChainSnapshot(userId, stagedContracts, new Date('2026-04-21T12:00:00.000Z'));
+    expect(chainSnapshot).not.toBeNull();
+    if (!chainSnapshot) {
+      throw new Error('Expected a chain snapshot for deterministic chain contracts.');
+    }
+
+    await db.inventoryItem.create({
+      data: {
+        userId,
+        itemDefinitionId: 'scrap_metal',
+        quantity: 4,
+      },
+    });
+
+    const activeChainStages = chainSnapshot.chainContracts.filter((contract) => contract.status === 'ACTIVE');
+
+    for (const chainStage of activeChainStages) {
+      await ContractService.deliverMaterial(userId, chainStage.id, 1);
+    }
+
+    const chainBonusReference = buildContractChainBonusReference(userId, chainSnapshot.dateSeed);
+    const chainBonusCount = await db.currencyLedger.count({
+      where: {
+        userId,
+        entryType: 'CONTRACT_REWARD',
+        referenceId: chainBonusReference,
+      },
+    });
+
+    expect(chainBonusCount).toBe(0);
   });
 
   it('invalid ownership fails with NOT_FOUND and keeps state unchanged', async () => {

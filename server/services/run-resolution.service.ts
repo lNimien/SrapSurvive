@@ -20,8 +20,22 @@ import { calculateLevelProgress } from '../domain/progression/progression.calcul
 import { computeLevelRewardBonus } from '../domain/progression/reward-bonus.logic';
 import { UpgradeTreeService } from './upgrade-tree.service';
 import { RunMode } from '../../types/game.types';
+import { applyRunMutator, resolveRunMutator } from '../domain/run/run-mutator.logic';
+import { ItemRarityDTO } from '@/types/dto.types';
+import { MutatorTuningService } from './mutator-tuning.service';
 
 type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
+
+type RunDangerConfigSnapshot = DangerConfig & {
+  runMode?: RunMode;
+  runMutator?: {
+    id: 'unstable_currents' | 'dense_scrapyard' | 'narrow_escape';
+    label: string;
+    summary: string;
+  };
+};
+
+type AnomalyStateMap = Record<string, { resolved?: boolean; decision?: 'IGNORE' | 'INVESTIGATE'; resolvedAt?: string }>;
 
 async function ensureItemDefinitionIds(
   tx: TxClient,
@@ -46,7 +60,7 @@ async function ensureItemDefinitionIds(
       update: {
         displayName: catalogItem.displayName,
         description: catalogItem.description,
-        rarity: catalogItem.rarity as any,
+        rarity: catalogItem.rarity as ItemRarityDTO,
         baseValue: catalogItem.baseValue,
         stackable: catalogItem.maxStack > 1,
         maxStack: catalogItem.maxStack,
@@ -62,7 +76,7 @@ async function ensureItemDefinitionIds(
         internalKey: catalogItem.id,
         displayName: catalogItem.displayName,
         description: catalogItem.description,
-        rarity: catalogItem.rarity as any,
+        rarity: catalogItem.rarity as ItemRarityDTO,
         baseValue: catalogItem.baseValue,
         stackable: catalogItem.maxStack > 1,
         maxStack: catalogItem.maxStack,
@@ -193,15 +207,20 @@ export const RunResolutionService = {
     const upgradedDangerConfig = await UpgradeTreeService.applyUpgradeProfileToDangerConfig(userId, baseDangerConfig);
     const dangerConfig = applyEquipmentToDangerConfig(upgradedDangerConfig, equipmentSnapshot);
     const normalizedRunMode = resolveRunMode(runMode);
+    const startedAt = new Date(); // Server Authority
+    const mutator = resolveRunMutator(zoneId, normalizedRunMode, `${userId}:${startedAt.toISOString()}`);
+    const mutatorProfile = await MutatorTuningService.getActiveProfile(mutator.id, normalizedRunMode);
+    const mutatorAdjustedDangerConfig = applyRunMutator(dangerConfig, mutator, mutatorProfile);
+
     const runDangerConfigSnapshot = {
-      ...dangerConfig,
+      ...mutatorAdjustedDangerConfig,
       runMode: normalizedRunMode,
+      runMutator: mutator,
+      runMutatorProfile: mutatorProfile,
     };
 
-    const startedAt = new Date(); // Server Authority
-
     // 4. Transactionally save everything
-    const runId = await db.$transaction(async (tx: any) => {
+    const runId = await db.$transaction(async (tx: TxClient) => {
       const newRun = await tx.activeRun.create({
         data: {
           userId,
@@ -209,7 +228,7 @@ export const RunResolutionService = {
           status: 'RUNNING',
           startedAt,
           equipmentSnapshot,
-           dangerConfig: runDangerConfigSnapshot as any,
+           dangerConfig: runDangerConfigSnapshot,
         },
       });
 
@@ -258,24 +277,25 @@ export const RunResolutionService = {
        throw new DomainError('UNAUTHORIZED', 'El runId no coincide con tu expedición activa.');
     }
 
-    const { dangerConfig, equipmentSnapshot, startedAt } = (activeRun as any);
-    const config = dangerConfig as DangerConfig & { runMode?: RunMode };
+    const config = activeRun.dangerConfig as RunDangerConfigSnapshot;
+    const equipmentSnapshot = activeRun.equipmentSnapshot as EquipmentSnapshot;
+    const startedAt = activeRun.startedAt;
     const runMode = resolveRunMode(config.runMode);
     
     const elapsedSeconds = Math.floor((Date.now() - startedAt.getTime()) / 1000);
     const dangerLevel = config.baseRate + (config.quadraticFactor * elapsedSeconds * elapsedSeconds);
     const isCatastrophe = dangerLevel >= config.catastropheThreshold;
 
-    let pendingLoot = computePendingLoot(
+    const pendingLoot = computePendingLoot(
       elapsedSeconds,
-      equipmentSnapshot as EquipmentSnapshot,
+      equipmentSnapshot,
       dangerLevel,
       config,
       runMode,
     );
     
     // Add bonus loot from anomalies (forced items)
-    const bonusLootIds = (activeRun as any).bonusLoot as string[] | null;
+    const bonusLootIds = (activeRun.bonusLoot as string[] | null) ?? null;
     if (bonusLootIds && bonusLootIds.length > 0) {
       for (const itemDefId of bonusLootIds) {
         const catalogItem = ITEM_CATALOG.find(i => i.id === itemDefId);
@@ -289,7 +309,7 @@ export const RunResolutionService = {
               displayName: catalogItem.displayName,
               iconKey: catalogItem.iconKey,
               quantity: 1,
-              rarity: catalogItem.rarity as any
+              rarity: catalogItem.rarity as ItemRarityDTO
             });
           }
         }
@@ -300,20 +320,20 @@ export const RunResolutionService = {
     let currencyEarned = computeCurrencyReward(
       elapsedSeconds,
       dangerLevel,
-      equipmentSnapshot as EquipmentSnapshot,
+      equipmentSnapshot,
       config,
       runMode,
     );
     let xpEarned = computeXpReward(
       elapsedSeconds,
       dangerLevel,
-      equipmentSnapshot as EquipmentSnapshot,
+      equipmentSnapshot,
       config,
       runMode,
     );
 
     // Atomic transaction
-    const extractionResult = await db.$transaction(async (tx: any) => {
+    const extractionResult = await db.$transaction(async (tx: TxClient) => {
         const definitionIdMap = await ensureItemDefinitionIds(tx, [
           ...finalLoot.map((item) => item.itemId),
           ID_EXTRACTION_INSURANCE,
@@ -354,7 +374,7 @@ export const RunResolutionService = {
            xpEarned = Math.floor(xpEarned * 0.25);
 
            if (runMode === RunMode.HARD) {
-             await applyHardModeCatastropheGearLoss(tx, userId, equipmentSnapshot as EquipmentSnapshot);
+              await applyHardModeCatastropheGearLoss(tx, userId, equipmentSnapshot);
            }
         }
 
@@ -409,7 +429,7 @@ export const RunResolutionService = {
              xpEarned
           );
           
-          const totalScrapRun = finalLoot.reduce((sum: number, item: any) => sum + item.quantity, 0);
+          const totalScrapRun = finalLoot.reduce((sum, item) => sum + item.quantity, 0);
 
           await tx.userProgression.update({
              where: { userId },
@@ -441,13 +461,21 @@ export const RunResolutionService = {
           }
        });
 
-       await tx.activeRun.delete({ where: { id: (activeRun as any).id } });
+       await tx.activeRun.delete({ where: { id: activeRun.id } });
 
         await tx.auditLog.create({
            data: {
               userId,
               action: isCatastrophe ? 'run.catastrophe' : 'run.extraction',
-              payload: { runId, runMode, elapsedSeconds, finalLoot, currencyEarned, xpEarned }
+              payload: {
+                runId,
+                runMode,
+                elapsedSeconds,
+                runMutator: config.runMutator ?? null,
+                finalLoot,
+                currencyEarned,
+                xpEarned,
+              }
            }
         });
 
@@ -456,7 +484,7 @@ export const RunResolutionService = {
 
     return {
        runId: extractionResult.runId,
-       status: (extractionResult.status as string).toLowerCase() as any,
+       status: extractionResult.status === 'FAILED' ? 'failed' : 'extracted',
        durationSeconds: extractionResult.durationSeconds,
        dangerLevelAtClose: extractionResult.dangerLevelAtClose,
        catastropheOccurred: extractionResult.catastropheOccurred,
@@ -473,7 +501,7 @@ export const RunResolutionService = {
       throw new DomainError('RUN_NOT_RUNNING', 'Expedición no encontrada o no válida.');
     }
 
-    const currentAnomState = (activeRun.anomalyState || {}) as any;
+    const currentAnomState = (activeRun.anomalyState as AnomalyStateMap | null) ?? {};
     
     // Safety check: already resolved?
     if (currentAnomState[anomalyId]?.resolved) {
@@ -489,7 +517,7 @@ export const RunResolutionService = {
       }
     };
 
-    const updatedConfig = { ...(activeRun.dangerConfig as any) };
+    const updatedConfig: RunDangerConfigSnapshot = { ...(activeRun.dangerConfig as RunDangerConfigSnapshot) };
     const bonusLoot = (activeRun.bonusLoot || []) as string[];
 
     let message = "Anomalía ignorada satisfactoriamente.";

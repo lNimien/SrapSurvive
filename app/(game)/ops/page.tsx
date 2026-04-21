@@ -8,6 +8,8 @@ import { auth } from '@/server/auth/auth';
 import { isAdminUser } from '@/server/auth/admin';
 import { EconomyObservabilityService } from '@/server/services/economy-observability.service';
 import { getActiveMutationKillSwitches } from '@/server/services/mutation-guard.service';
+import { MutatorTuningService } from '@/server/services/mutator-tuning.service';
+import { MutatorActionPackPanel } from '@/components/game/ops/MutatorActionPackPanel';
 
 export const metadata = {
   title: 'Ops — Scrap & Survive',
@@ -28,6 +30,16 @@ function formatLatency(value: number | null): string {
   }
 
   return `${formatNumber(value)} ms`;
+}
+
+function formatDateTime(value: string): string {
+  return new Date(value).toLocaleString('es-ES', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 const WEEKLY_CLAIM_OUTCOME_LABELS = {
@@ -62,6 +74,22 @@ function statusBadgeClass(status: 'healthy' | 'warning' | 'critical'): string {
   return 'border-rose-500/40 bg-rose-500/10 text-rose-300';
 }
 
+function mutatorStatusLabel(status: 'healthy' | 'warning' | 'critical' | 'insufficient_data'): string {
+  if (status === 'insufficient_data') {
+    return 'Muestra baja';
+  }
+
+  return statusLabel(status);
+}
+
+function mutatorStatusBadgeClass(status: 'healthy' | 'warning' | 'critical' | 'insufficient_data'): string {
+  if (status === 'insufficient_data') {
+    return 'border-slate-500/40 bg-slate-500/10 text-slate-300';
+  }
+
+  return statusBadgeClass(status);
+}
+
 export default async function OpsPage() {
   if (!featureFlags.c1EconomyTelemetry) {
     return (
@@ -88,9 +116,36 @@ export default async function OpsPage() {
     redirect('/dashboard');
   }
 
-  const telemetry = await EconomyObservabilityService.getEconomyTelemetry();
   const killSwitches = getActiveMutationKillSwitches();
   const hasActiveKillSwitch = killSwitches.some((switchState) => switchState.active);
+  const telemetry = await EconomyObservabilityService.getEconomyTelemetry({
+    hasActiveIncident: hasActiveKillSwitch,
+    reviewerUserId: userId,
+  });
+
+  const nowMs = new Date(telemetry.runMutatorActionPack.generatedAt).getTime();
+  const history24h = telemetry.mutatorAdjustmentHistory.filter((entry) => nowMs - new Date(entry.createdAt).getTime() <= 24 * 60 * 60 * 1_000);
+  const history7d = telemetry.mutatorAdjustmentHistory.filter((entry) => nowMs - new Date(entry.createdAt).getTime() <= 7 * 24 * 60 * 60 * 1_000);
+  const history30d = telemetry.mutatorAdjustmentHistory;
+
+  const suggestedMutatorModePairs = Array.from(
+    new Set(telemetry.runMutatorActionPack.suggestions.map((suggestion) => `${suggestion.mutatorId}:${suggestion.runMode}`)),
+  );
+
+  const capsByMutatorKeyEntries = await Promise.all(
+    suggestedMutatorModePairs.map(async (pair) => {
+      const [mutatorId, runModeRaw] = pair.split(':');
+      const runMode = runModeRaw === 'HARD' ? 'HARD' : 'SAFE';
+      const caps = await MutatorTuningService.getPolicyCaps(mutatorId, runMode);
+
+      return [pair, {
+        maxAbsRewardDeltaPercent: caps.maxAbsRewardDeltaPercent,
+        maxAbsDangerDeltaPercent: caps.maxAbsDangerDeltaPercent,
+      }] as const;
+    }),
+  );
+
+  const capsByMutatorKey = Object.fromEntries(capsByMutatorKeyEntries);
 
   return (
     <main className="mx-auto w-full max-w-6xl py-6 space-y-6" aria-labelledby="ops-title">
@@ -100,6 +155,9 @@ export default async function OpsPage() {
         </h1>
         <p className="text-sm text-muted-foreground">
           Métricas de observabilidad C.1 para monitoreo de fuentes, sinks y actividad operacional.
+        </p>
+        <p className="text-xs uppercase tracking-wider text-muted-foreground">
+          Mutator tuning source: {telemetry.mutatorTuningSource === 'table_primary' ? 'TABLE PRIMARY' : 'AUDIT FALLBACK'}
         </p>
       </header>
 
@@ -401,6 +459,132 @@ export default async function OpsPage() {
                 </ul>
               </div>
             </div>
+          </CardContent>
+        </Card>
+      </section>
+
+      <section className="space-y-4" aria-label="Salud de mutadores tácticos">
+        <Card className="border-fuchsia-500/30">
+          <CardHeader>
+            <CardTitle className="uppercase tracking-wider">Run Mutator Health</CardTitle>
+            <CardDescription>
+              Rendimiento de mutadores por modo (SAFE/HARD): volumen, tasa de extracción y duración promedio.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="overflow-x-auto rounded-md border border-border/60">
+              <table className="w-full min-w-[640px] text-sm">
+                <caption className="sr-only">Métricas de mutadores en 24h.</caption>
+                <thead className="bg-muted/30 text-xs uppercase tracking-wider text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2 text-left">Mutador</th>
+                    <th className="px-3 py-2 text-left">Modo</th>
+                    <th className="px-3 py-2 text-left">Estado</th>
+                    <th className="px-3 py-2 text-right">Runs</th>
+                    <th className="px-3 py-2 text-right">Extracted</th>
+                    <th className="px-3 py-2 text-right">Failed</th>
+                    <th className="px-3 py-2 text-right">Winrate</th>
+                    <th className="px-3 py-2 text-right">Duración prom.</th>
+                    <th className="px-3 py-2 text-left">Recomendación</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {telemetry.runMutatorHealth.window24h.length === 0 && (
+                    <tr className="border-t border-border/60">
+                      <td className="px-3 py-3 text-muted-foreground" colSpan={10}>
+                        Sin datos de mutadores en la ventana de 24h.
+                      </td>
+                    </tr>
+                  )}
+                  {telemetry.runMutatorHealth.window24h.map((metric) => (
+                    <tr key={`mutator-24h-${metric.mutatorId}-${metric.runMode}`} className="border-t border-border/60">
+                      <td className="px-3 py-2 font-mono text-xs">{metric.mutatorId}</td>
+                      <td className="px-3 py-2 font-semibold">{metric.runMode}</td>
+                      <td className="px-3 py-2">
+                        <span
+                          className={cn(
+                            'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide',
+                            mutatorStatusBadgeClass(metric.guardrailStatus),
+                          )}
+                        >
+                          {mutatorStatusLabel(metric.guardrailStatus)}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-right">{formatNumber(metric.totalRuns)}</td>
+                      <td className="px-3 py-2 text-right text-emerald-300">{formatNumber(metric.extractedRuns)}</td>
+                      <td className="px-3 py-2 text-right text-rose-300">{formatNumber(metric.failedRuns)}</td>
+                      <td className="px-3 py-2 text-right">{formatPercent(metric.extractionRate)}</td>
+                      <td className="px-3 py-2 text-right">{formatNumber(metric.averageDurationSeconds)}s</td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground">{metric.recommendation}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+
+        <MutatorActionPackPanel
+          generatedAt={telemetry.runMutatorActionPack.generatedAt}
+          policySummary={telemetry.runMutatorActionPack.policySummary}
+          suggestions={telemetry.runMutatorActionPack.suggestions}
+          recentAdjustedKeys7d={telemetry.mutatorRecentAdjustedKeys7d}
+          capsByMutatorKey={capsByMutatorKey}
+        />
+
+        <Card className="border-fuchsia-500/20">
+          <CardHeader>
+            <CardTitle className="uppercase tracking-wider">Historial de ajustes de mutadores</CardTitle>
+            <CardDescription>
+              Trazabilidad de cambios aplicados con diff before → after y filtros por ventana.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            {[
+              { label: '24h', rows: history24h },
+              { label: '7d', rows: history7d },
+              { label: '30d', rows: history30d },
+            ].map((block) => (
+              <div key={block.label} className="space-y-2">
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Ventana {block.label}</p>
+                <div className="overflow-x-auto rounded-md border border-border/60">
+                  <table className="w-full min-w-[920px] text-sm">
+                    <thead className="bg-muted/30 text-xs uppercase tracking-wider text-muted-foreground">
+                      <tr>
+                        <th className="px-3 py-2 text-left">Fecha</th>
+                        <th className="px-3 py-2 text-left">Mutador</th>
+                        <th className="px-3 py-2 text-left">Modo</th>
+                        <th className="px-3 py-2 text-left">Acción</th>
+                        <th className="px-3 py-2 text-right">Delta sugerido</th>
+                        <th className="px-3 py-2 text-left">Before → After</th>
+                        <th className="px-3 py-2 text-left">Admin</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {block.rows.length === 0 ? (
+                        <tr className="border-t border-border/60">
+                          <td className="px-3 py-3 text-muted-foreground" colSpan={7}>Sin ajustes registrados.</td>
+                        </tr>
+                      ) : (
+                        block.rows.map((entry) => (
+                          <tr key={`${block.label}-${entry.createdAt}-${entry.mutatorId}-${entry.runMode}`} className="border-t border-border/60">
+                            <td className="px-3 py-2 text-xs">{formatDateTime(entry.createdAt)}</td>
+                            <td className="px-3 py-2 font-mono text-xs">{entry.mutatorId}</td>
+                            <td className="px-3 py-2">{entry.runMode}</td>
+                            <td className="px-3 py-2">{entry.actionType}</td>
+                            <td className="px-3 py-2 text-right">{entry.suggestedDeltaPercent}%</td>
+                            <td className="px-3 py-2 text-xs">
+                              reward {entry.beforeProfile.rewardDeltaPercent}% → {entry.afterProfile.rewardDeltaPercent}% · danger {entry.beforeProfile.dangerPressureDeltaPercent}% → {entry.afterProfile.dangerPressureDeltaPercent}%
+                            </td>
+                            <td className="px-3 py-2 text-xs text-muted-foreground">{entry.appliedByUserId}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
           </CardContent>
         </Card>
       </section>

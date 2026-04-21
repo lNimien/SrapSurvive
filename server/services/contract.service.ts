@@ -3,9 +3,13 @@ import { db } from '../db/client';
 import { DomainError } from '../domain/inventory/inventory.service';
 import { generateContractDraft } from '../domain/contract/contract.calculator';
 import { calculateLevelProgress } from '../domain/progression/progression.calculator';
+import {
+  buildContractChainBonusReference,
+  buildContractChainSnapshot,
+} from '../domain/contract/contract-chain';
+import { computeContractRefreshCostCC } from '../domain/contract/contract-refresh-cost';
 
 const DAILY_CONTRACT_COUNT = 3;
-const CONTRACT_REFRESH_COST_CC = 85;
 
 function getUtcDayRange(referenceDate: Date): { dayStart: Date; dayEnd: Date; dateSeed: string } {
   const dayStart = new Date(Date.UTC(
@@ -191,7 +195,9 @@ export const ContractService = {
       }
 
       const currentBalance = latestLedgerEntry?.balanceAfter ?? 0;
-      if (currentBalance < CONTRACT_REFRESH_COST_CC) {
+      const refreshCostCC = computeContractRefreshCostCC(refreshCountToday);
+
+      if (currentBalance < refreshCostCC) {
         throw new DomainError('INSUFFICIENT_BALANCE', 'No tienes créditos suficientes para refrescar contratos.');
       }
 
@@ -216,8 +222,8 @@ export const ContractService = {
       await tx.currencyLedger.create({
         data: {
           userId,
-          amount: -CONTRACT_REFRESH_COST_CC,
-          balanceAfter: currentBalance - CONTRACT_REFRESH_COST_CC,
+          amount: -refreshCostCC,
+          balanceAfter: currentBalance - refreshCostCC,
           entryType: 'PURCHASE',
           referenceId: refreshReferenceId,
         },
@@ -250,7 +256,7 @@ export const ContractService = {
           payload: {
             requestId: requestId ?? null,
             refreshIteration,
-            refreshCostCC: CONTRACT_REFRESH_COST_CC,
+            refreshCostCC,
             slotsGenerated: contractsToCreate.length,
             referenceId: refreshReferenceId,
           },
@@ -275,11 +281,29 @@ export const ContractService = {
     });
   },
 
+  async getNextRefreshCostCC(userId: string): Promise<number> {
+    const { dayStart, dayEnd } = getUtcDayRange(new Date());
+    const refreshCountToday = await db.auditLog.count({
+      where: {
+        userId,
+        action: 'contract.refresh',
+        createdAt: {
+          gte: dayStart,
+          lte: dayEnd,
+        },
+      },
+    });
+
+    return computeContractRefreshCostCC(refreshCountToday);
+  },
+
   /**
    * Delivers items to a contract.
    */
   async deliverMaterial(userId: string, contractId: string, quantity: number) {
     return await db.$transaction(async (tx) => {
+      const now = new Date();
+
       // 1. Validate contract
       const contract = await tx.userContract.findUnique({
         where: { id: contractId }
@@ -289,7 +313,7 @@ export const ContractService = {
         throw new DomainError('NOT_FOUND', 'Contrato no encontrado.');
       }
 
-      if (contract.status !== 'ACTIVE' || contract.expiresAt < new Date()) {
+      if (contract.status !== 'ACTIVE' || contract.expiresAt < now) {
         throw new DomainError('EXPIRED', 'Este contrato ha expirado.');
       }
 
@@ -333,7 +357,7 @@ export const ContractService = {
 
       // 5. If COMPLETED, give rewards
       if (isCompleted) {
-        // Give CC
+        // Give base CC
         const latestLedger = await tx.currencyLedger.findFirst({
            where: { userId }, orderBy: { createdAt: 'desc' }
         });
@@ -349,7 +373,7 @@ export const ContractService = {
            }
         });
 
-        // Give XP
+        // Give base XP
         const progression = await tx.userProgression.findUnique({
            where: { userId }
         });
@@ -370,7 +394,7 @@ export const ContractService = {
            });
         }
 
-        // Audit log
+        // Audit log for base completion
         await tx.auditLog.create({
             data: {
                 userId,
@@ -378,6 +402,103 @@ export const ContractService = {
                 payload: { contractId, rewardCC: contract.rewardCC, rewardXP: contract.rewardXP }
             }
         });
+
+        // 6. Contract chain v1 final bonus (2-3 stages)
+        const { dayStart, dayEnd } = getUtcDayRange(contract.createdAt);
+        const dailyContracts = await tx.userContract.findMany({
+          where: {
+            userId,
+            createdAt: {
+              gte: dayStart,
+              lte: dayEnd,
+            },
+          },
+          select: {
+            id: true,
+            rewardCC: true,
+            rewardXP: true,
+            status: true,
+            createdAt: true,
+            expiresAt: true,
+          },
+          orderBy: { createdAt: 'asc' },
+        });
+
+        const chainSnapshot = buildContractChainSnapshot(userId, dailyContracts, now);
+
+        if (chainSnapshot) {
+          const isPartOfChain = chainSnapshot.chainContracts.some((chainContract) => chainContract.id === contractId);
+          const chainBonusReference = buildContractChainBonusReference(userId, chainSnapshot.dateSeed);
+
+          if (isPartOfChain && chainSnapshot.state === 'COMPLETED') {
+            const existingChainBonus = await tx.currencyLedger.findFirst({
+              where: {
+                userId,
+                entryType: 'CONTRACT_REWARD',
+                referenceId: chainBonusReference,
+              },
+              select: { id: true },
+            });
+
+            if (!existingChainBonus) {
+              if (chainSnapshot.bonus.rewardCC > 0) {
+                const latestAfterBase = await tx.currencyLedger.findFirst({
+                  where: { userId },
+                  orderBy: { createdAt: 'desc' },
+                  select: { balanceAfter: true },
+                });
+
+                const chainPrevBalance = latestAfterBase?.balanceAfter ?? 0;
+
+                await tx.currencyLedger.create({
+                  data: {
+                    userId,
+                    amount: chainSnapshot.bonus.rewardCC,
+                    balanceAfter: chainPrevBalance + chainSnapshot.bonus.rewardCC,
+                    entryType: 'CONTRACT_REWARD',
+                    referenceId: chainBonusReference,
+                  },
+                });
+              }
+
+              if (chainSnapshot.bonus.rewardXP > 0) {
+                const progressionAfterBase = await tx.userProgression.findUnique({
+                  where: { userId },
+                });
+
+                if (progressionAfterBase) {
+                  const chainXpProgress = calculateLevelProgress(
+                    progressionAfterBase.currentXp,
+                    progressionAfterBase.currentLevel,
+                    chainSnapshot.bonus.rewardXP,
+                  );
+
+                  await tx.userProgression.update({
+                    where: { userId },
+                    data: {
+                      currentXp: chainXpProgress.newXp,
+                      currentLevel: chainXpProgress.newLevel,
+                    },
+                  });
+                }
+              }
+
+              await tx.auditLog.create({
+                data: {
+                  userId,
+                  action: 'contract.chain_bonus',
+                  payload: {
+                    contractId,
+                    referenceId: chainBonusReference,
+                    stageCount: chainSnapshot.stageCount,
+                    rewardCC: chainSnapshot.bonus.rewardCC,
+                    rewardXP: chainSnapshot.bonus.rewardXP,
+                  },
+                },
+              });
+            }
+          }
+        }
       } else {
           // Audit log partial delivery
           await tx.auditLog.create({
@@ -390,6 +511,8 @@ export const ContractService = {
       }
 
       return updatedContract;
+    }, {
+      isolationLevel: 'Serializable',
     });
   }
 };

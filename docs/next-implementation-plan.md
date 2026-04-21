@@ -1,7 +1,7 @@
-# Next Autonomous Implementation Plan — Post D.4a Weekly Claim Items
+# Next Autonomous Implementation Plan — Midgame Spine (Post D.4b)
 
 **Fecha:** 2026-04-19  
-**Estado actual:** D.4a consolidado (kill-switch guards + claim semanal persistente + item rewards transaccionales)
+**Estado actual:** D.4b consolidado (observabilidad de claims + hardening de concurrencia + runbook operativo)
 **Prioridad recomendada siguiente bloque:** Alta
 
 ---
@@ -15,56 +15,61 @@
 
 ---
 
-## Próximo bloque recomendado: D.4b — Observabilidad y hardening operativo de LiveOps claims
+## Próximo bloque recomendado: E.1 — Midgame Spine (retención 2–6 semanas)
 
-1. **Métricas operativas de claims semanales**
-   - Contadores por resultado (`CLAIMED`, `ALREADY_CLAIMED`, `NOT_CLAIMABLE`, `FEATURE_DISABLED`).
-   - Tiempos de transacción (p50/p95) para detectar degradación en horario pico.
-   - Ratio de rollback y error rate por directiva.
+1. **Contratos encadenados (multi-run) con riesgo/recompensa real**
+   - Introducir cadenas de 2-3 etapas con bonus final y condición de falla.
+   - Reusar contratos actuales como plantilla y sumar variantes por modo SAFE/HARD.
+   - Mantener idempotencia y claim transaccional como regla innegociable.
 
-2. **Audit payload ampliado + tablero ops**
-   - Exponer en `/ops` resumen semanal de claims (volumen, éxito, rechazos, item faucet por itemDefId).
-   - Detectar outliers de faucet de materiales con umbrales simples configurables.
+2. **Buildcraft funcional (trade-offs, no solo números)**
+   - Añadir perks/efectos con contrapartida explícita (ganás X, perdés Y).
+   - Evitar meta única: cada arquetipo debe tener al menos una debilidad clara.
+   - Mantener caps explícitos en loot/currency/xp/resistencia/threshold.
 
-3. **Hardening de concurrencia (stress básico en integración)**
-   - Escenario de doble claim concurrente verificando unicidad de efectos.
-   - Escenario de contención con múltiples directivas en paralelo para mismo usuario.
+3. **Sinks de economía de mediano plazo**
+   - Introducir sink recurrente controlado (ej. recalibración/reroll acotado con costo en CC).
+   - Añadir sink aspiracional (upgrade de cuenta de costo escalado).
+   - Monitorear faucet/sink por cohorte antes de ampliar payout global.
 
-4. **Runbook operativo específico de LiveOps claims**
-   - Procedimiento para pausar claims, validar consistencia post-incidente y reactivar.
-   - Checklist de evidencia para cierre de incidente.
+4. **UX de decisión de extracción (claridad táctica)**
+   - Exponer ganancia marginal estimada por ventana corta (+10s / +30s) en dashboard.
+   - Reforzar señalización de umbral de catástrofe y estado de riesgo actual.
+   - Priorizar legibilidad y evitar sobrecarga visual.
 
 ---
 
 ## Backlog técnico posterior (opcional)
 
-### B1 — Telemetría por cohorte extendida
+### B1 — Telemetría de producto (retención/profundidad)
 - Ratio faucet/sink por cohorte.
 - Percentiles de ingresos por usuario.
 - Delta SAFE/HARD por ventana temporal.
+- Time-to-first-build viable y completion rate de cadenas de contrato.
 
-### B2 — Alerting automático
-- Enrutar warning/critical a on-call (Discord/Slack/email).
-- Deduplicación de alertas y ventana de enfriamiento.
+### B2 — Escalado de contenido
+- Nuevos eventos de expedición con mutadores server-authoritative.
+- Nuevas familias de stats/effects con identidad por arquetipo.
+- Extensión de progresión con hitos funcionales (no solo cap numérico).
 
 ---
 
-## Criterio de Done del siguiente bloque (D.4b)
+## Criterio de Done del siguiente bloque (E.1)
 
-- Métricas de claims publicadas en panel ops y auditables por semana.
-- Tests de concurrencia para claims semanales en verde.
-- Runbook operativo de claims documentado y validado en staging.
-- Alertas básicas para spikes de error/rollback configuradas.
+- Contratos encadenados activos y claimables sin duplicidad en escenarios concurrentes.
+- Primer set de perks/efectos de trade-off desplegado con caps explícitos y tests de balance básicos.
+- Al menos 1 sink recurrente y 1 sink aspiracional activos, medidos en dashboard ops.
+- Mejora de UX en extracción desplegada y validada con telemetría de uso.
 
 ---
 
 ## Riesgos y mitigación del siguiente bloque
 
-- **Riesgo:** más observabilidad sin señal accionable.
-  - **Mitigación:** limitar métricas a KPIs operativos concretos y umbrales explícitos.
+- **Riesgo:** agregar contenido sin decisiones reales (pseudo-variedad).
+  - **Mitigación:** exigir trade-offs y counters por arquetipo antes de aprobar perks/items.
 
-- **Riesgo:** tests concurrentes frágiles/no deterministas.
-  - **Mitigación:** escenarios acotados con aserciones de invariantes duras (ledger/xp/items únicos).
+- **Riesgo:** inflación de economía por faucets nuevos sin sinks equivalentes.
+  - **Mitigación:** gatear nuevos rewards detrás de ratio faucet/sink objetivo por cohorte.
 
-- **Riesgo:** detección tardía de inflación por item rewards.
-  - **Mitigación:** reporte semanal de faucet por itemDefId y límites de rewards conservadores.
+- **Riesgo:** sobrecargar la UI con señales nuevas.
+  - **Mitigación:** introducir cambios en iteraciones pequeñas y validar comprensión con métricas de interacción.

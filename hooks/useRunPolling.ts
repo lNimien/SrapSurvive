@@ -6,6 +6,7 @@ import { interpolateDangerLevel } from '@/lib/utils/danger-interpolation';
 
 export function useRunPolling(initialState: RunStateDTO) {
   const [runState, setRunState] = useState<RunStateDTO>(initialState);
+  const [previousRunState, setPreviousRunState] = useState<RunStateDTO | null>(null);
 
   useEffect(() => {
     // Si no está corriendo ni explotando, detenemos.
@@ -19,7 +20,10 @@ export function useRunPolling(initialState: RunStateDTO) {
         const json = await response.json();
         
         if (json.success && json.data) {
-          setRunState(json.data);
+          setRunState((previousSnapshot) => {
+            setPreviousRunState(previousSnapshot);
+            return json.data;
+          });
           
           if (json.data.status === 'idle') {
              clearInterval(intervalId);
@@ -33,20 +37,19 @@ export function useRunPolling(initialState: RunStateDTO) {
     return () => clearInterval(intervalId);
   }, [runState.status]);
 
-  return runState;
+  return { runState, previousRunState };
 }
 
 export function useDangerInterpolation(runState: RunStateDTO) {
   const [visualDanger, setVisualDanger] = useState(runState.dangerLevel ?? 0);
-  const [previousSnapshot, setPreviousSnapshot] = useState<RunStateDTO | null>(null);
-  const [snapshotCapturedAtMs, setSnapshotCapturedAtMs] = useState<number>(Date.now());
-  const lastSnapshotRef = useRef<RunStateDTO | null>(null);
+  const previousSnapshotRef = useRef<RunStateDTO | null>(null);
+  const currentSnapshotRef = useRef<RunStateDTO>(runState);
+  const snapshotCapturedAtMsRef = useRef<number>(0);
 
   useEffect(() => {
-    setPreviousSnapshot(lastSnapshotRef.current ? { ...lastSnapshotRef.current } : null);
-    lastSnapshotRef.current = runState;
-    setSnapshotCapturedAtMs(Date.now());
-    setVisualDanger(runState.dangerLevel ?? 0);
+    previousSnapshotRef.current = currentSnapshotRef.current ? { ...currentSnapshotRef.current } : null;
+    currentSnapshotRef.current = runState;
+    snapshotCapturedAtMsRef.current = Date.now();
   }, [runState]);
 
   useEffect(() => {
@@ -57,16 +60,16 @@ export function useDangerInterpolation(runState: RunStateDTO) {
     const intervalId = setInterval(() => {
       setVisualDanger(
         interpolateDangerLevel({
-          currentSnapshot: runState,
-          previousSnapshot,
+          currentSnapshot: currentSnapshotRef.current,
+          previousSnapshot: previousSnapshotRef.current,
           nowMs: Date.now(),
-          snapshotCapturedAtMs,
+          snapshotCapturedAtMs: snapshotCapturedAtMsRef.current,
         }),
       );
     }, 250);
 
     return () => clearInterval(intervalId);
-  }, [previousSnapshot, runState, snapshotCapturedAtMs]);
+  }, [runState.status]);
 
   return visualDanger;
 }

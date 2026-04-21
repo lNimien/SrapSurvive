@@ -23,6 +23,7 @@ import { ProvisioningService } from './provisioning.service';
 import { WeeklyGoalsService } from './weekly-goals.service';
 import { PlayerAnalyticsService } from './player-analytics.service';
 import { featureFlags } from '@/config/feature-flags.config';
+import { buildContractChainSnapshot, ContractChainState } from '../domain/contract/contract-chain';
 
 // ─── Internal mappers (Prisma/Domain → DTO) ───────────────────────────────────
 
@@ -123,6 +124,11 @@ function toRunStateDTO(
     baseCreditsPerMinute: number;
     baseXpPerSecond: number;
     runMode?: RunMode;
+    runMutator?: {
+      id: 'unstable_currents' | 'dense_scrapyard' | 'narrow_escape';
+      label: string;
+      summary: string;
+    };
   };
 
   const runMode = dangerConfig.runMode === RunMode.HARD ? RunMode.HARD : RunMode.SAFE;
@@ -153,6 +159,7 @@ function toRunStateDTO(
       ...anomalyDef,
       discoveredAt: new Date(run.startedAt.getTime() + (anomalyDef.baseTriggerSeconds * 1000)).toISOString()
     } : null,
+    runMutator: dangerConfig.runMutator ?? null,
   };
 }
 
@@ -165,7 +172,7 @@ function toUserContractDTO(contract: {
   rewardXP: number;
   status: 'ACTIVE' | 'COMPLETED' | 'EXPIRED';
   expiresAt: Date;
-}, availableByItemDefId: Record<string, number>): UserContractDTO {
+}, availableByItemDefId: Record<string, number>, chainMeta?: ContractChainContractMeta): UserContractDTO {
   const itemDef = ITEM_CATALOG.find(i => i.id === contract.requiredItemDefId);
   return {
     id: contract.id,
@@ -179,7 +186,52 @@ function toUserContractDTO(contract: {
     rewardXP: contract.rewardXP,
     status: contract.status,
     expiresAt: contract.expiresAt.toISOString(),
+    chainStage: chainMeta?.chainStage ?? null,
+    chainStageCount: chainMeta?.chainStageCount ?? null,
+    chainState: chainMeta?.chainState ?? null,
+    chainBonusCC: chainMeta?.chainBonusCC ?? 0,
+    chainBonusXP: chainMeta?.chainBonusXP ?? 0,
   };
+}
+
+interface ContractChainContractMeta {
+  chainStage: number;
+  chainStageCount: number;
+  chainState: ContractChainState;
+  chainBonusCC: number;
+  chainBonusXP: number;
+}
+
+function toContractChainMetaById(
+  userId: string,
+  contracts: Array<{
+    id: string;
+    requiredItemDefId: string;
+    requiredQuantity: number;
+    currentQuantity: number;
+    rewardCC: number;
+    rewardXP: number;
+    status: 'ACTIVE' | 'COMPLETED' | 'EXPIRED';
+    expiresAt: Date;
+    createdAt: Date;
+  }>,
+): Record<string, ContractChainContractMeta> {
+  const snapshot = buildContractChainSnapshot(userId, contracts);
+  if (!snapshot) {
+    return {};
+  }
+
+  return snapshot.chainContracts.reduce<Record<string, ContractChainContractMeta>>((acc, contract, index) => {
+    acc[contract.id] = {
+      chainStage: index + 1,
+      chainStageCount: snapshot.stageCount,
+      chainState: snapshot.state,
+      chainBonusCC: snapshot.bonus.rewardCC,
+      chainBonusXP: snapshot.bonus.rewardXP,
+    };
+
+    return acc;
+  }, {});
 }
 
 function toInventoryAvailabilityMap(inventory: InventoryItemDomain[]): Record<string, number> {
@@ -198,13 +250,14 @@ export const PlayerStateService = {
     await ProvisioningService.ensureProvisioned(userId);
 
     // Parallel fetch — all reads, no writes, safe to parallelise
-    const [profile, currencyBalance, equipment, inventory, activeRunDomain, contracts, upgrades, achievements] = await Promise.all([
+    const [profile, currencyBalance, equipment, inventory, activeRunDomain, contracts, nextContractRefreshCostCC, upgrades, achievements] = await Promise.all([
       UserRepository.getUserProfile(userId),
       EconomyRepository.getCurrentBalance(userId),
       InventoryRepository.getEquipmentByUser(userId),
       InventoryRepository.getInventoryByUser(userId),
       RunRepository.findActiveRun(userId),
       ContractService.ensureDailyContracts(userId),
+      ContractService.getNextRefreshCostCC(userId),
       AccountUpgradeService.getUpgradesForPlayer(userId),
       AchievementService.getAchievementsForPlayer(userId),
     ]);
@@ -237,6 +290,7 @@ export const PlayerStateService = {
     ]);
 
     const availableByItemDefId = toInventoryAvailabilityMap(inventory);
+    const chainMetaByContractId = toContractChainMetaById(userId, contracts);
 
     return {
       userId,
@@ -247,7 +301,10 @@ export const PlayerStateService = {
       currencyBalance,
       equipment: toEquipmentDTO(equipment),
       activeRun,
-      contracts: contracts.map((contract) => toUserContractDTO(contract, availableByItemDefId)),
+      contracts: contracts.map((contract) =>
+        toUserContractDTO(contract, availableByItemDefId, chainMetaByContractId[contract.id]),
+      ),
+      nextContractRefreshCostCC,
       upgrades,
       achievements,
       activeSynergies,

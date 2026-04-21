@@ -38,6 +38,7 @@ import {
 
 interface ContractsPanelProps {
   contracts: UserContractDTO[];
+  nextRefreshCostCC?: number;
 }
 
 const STATUS_PRIORITY: Record<ContractOperationalState, number> = {
@@ -47,7 +48,7 @@ const STATUS_PRIORITY: Record<ContractOperationalState, number> = {
   blocked: 3,
 };
 
-export function ContractsPanel({ contracts }: ContractsPanelProps) {
+export function ContractsPanel({ contracts, nextRefreshCostCC = 85 }: ContractsPanelProps) {
   const { toast } = useToast();
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -105,13 +106,13 @@ export function ContractsPanel({ contracts }: ContractsPanelProps) {
         requestId: crypto.randomUUID(),
       });
 
-      if (result.success) {
-        toast({
-          title: "Contratos actualizados",
-          description: result.data.message,
-          variant: "success",
-        });
-      } else {
+        if (result.success) {
+          toast({
+            title: "Contratos actualizados",
+            description: `${result.data.message} Costo aplicado: ${nextRefreshCostCC} CC.`,
+            variant: "success",
+          });
+        } else {
         toast({
           title: "No se pudo refrescar",
           description: result.error.message,
@@ -152,6 +153,12 @@ export function ContractsPanel({ contracts }: ContractsPanelProps) {
         </div>
 
         <div className="flex items-center gap-2">
+          <Badge
+            variant="outline"
+            className="border-amber-500/45 bg-amber-500/10 px-2 py-0 text-[10px] font-mono uppercase tracking-widest text-amber-200"
+          >
+            Próx. refresh: {nextRefreshCostCC} CC
+          </Badge>
           <Badge
             variant="outline"
             className="border-primary/40 bg-primary/5 px-2 py-0 text-[10px] font-mono uppercase tracking-widest text-primary/70"
@@ -222,6 +229,36 @@ export function ContractsPanel({ contracts }: ContractsPanelProps) {
                       {isCriticalWindow ? "Crítico" : isAlertWindow ? "Alerta" : "Estable"}
                     </Badge>
                   ) : null}
+
+                  {contract.chainStage && contract.chainStageCount ? (
+                    <div className="flex flex-col items-end gap-1">
+                      <Badge
+                        variant="outline"
+                        className="border-violet-500/45 bg-violet-500/10 text-[10px] uppercase tracking-widest text-violet-200"
+                      >
+                        Cadena {contract.chainStage}/{contract.chainStageCount}
+                      </Badge>
+                      {contract.chainState ? (
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            'text-[9px] uppercase tracking-widest',
+                            contract.chainState === 'FAILED'
+                              ? 'border-red-500/60 bg-red-500/12 text-red-200'
+                              : contract.chainState === 'COMPLETED'
+                                ? 'border-emerald-500/60 bg-emerald-500/12 text-emerald-200'
+                                : 'border-violet-500/45 bg-violet-500/10 text-violet-200',
+                          )}
+                        >
+                          {contract.chainState === 'FAILED'
+                            ? 'Cadena fallida'
+                            : contract.chainState === 'COMPLETED'
+                              ? 'Cadena completa'
+                              : 'Cadena activa'}
+                        </Badge>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
 
                 <CardTitle className="flex items-center gap-2 text-lg font-bold uppercase tracking-tight text-primary">
@@ -262,6 +299,21 @@ export function ContractsPanel({ contracts }: ContractsPanelProps) {
                     <span>Restante: {progress.remaining}</span>
                   </div>
 
+                  {contract.chainStage && contract.chainStageCount ? (
+                    <div className="rounded-sm border border-violet-500/30 bg-violet-500/8 px-2.5 py-2 text-[10px] font-mono uppercase tracking-[0.14em] space-y-1">
+                      <p className="text-violet-200/90">
+                        Bonus final cadena: +{contract.chainBonusCC ?? 0} CC · +{contract.chainBonusXP ?? 0} XP
+                      </p>
+                      {contract.chainState === 'FAILED' ? (
+                        <p className="text-red-200">Bloqueado: una etapa expiró y anuló el bonus final.</p>
+                      ) : contract.chainState === 'COMPLETED' ? (
+                        <p className="text-emerald-200">Aplicado: cadena completada con éxito.</p>
+                      ) : (
+                        <p className="text-violet-100/80">Estado: completa todas las etapas activas antes del reset.</p>
+                      )}
+                    </div>
+                  ) : null}
+
                   {showCountdown ? (
                     <div
                       className={cn(
@@ -295,6 +347,12 @@ export function ContractsPanel({ contracts }: ContractsPanelProps) {
                     <span className="font-mono text-xs font-bold text-cyan-400">+{contract.rewardXP}</span>
                   </div>
                 </div>
+
+                {contract.chainStage === contract.chainStageCount && contract.chainStageCount ? (
+                  <div className="rounded-sm border border-violet-500/25 bg-violet-500/10 px-2 py-1.5 text-[10px] font-mono uppercase tracking-widest text-violet-200">
+                    Bonus final cadena: +{contract.chainBonusCC ?? 0} CC · +{contract.chainBonusXP ?? 0} XP
+                  </div>
+                ) : null}
 
                 <Button
                   variant="outline"

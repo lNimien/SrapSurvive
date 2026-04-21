@@ -7,13 +7,17 @@ interface DangerMeterProps {
   dangerLevel: number;
   status: 'running' | 'catastrophe' | 'idle';
   trend: 'rising' | 'stable';
+  catastropheThreshold?: number;
 }
 
-export function DangerMeter({ dangerLevel, status, trend }: DangerMeterProps) {
+export function DangerMeter({ dangerLevel, status, trend, catastropheThreshold }: DangerMeterProps) {
   const percentage = Math.min(Math.max(dangerLevel * 100, 0), 100);
   const isCatastrophe = status === 'catastrophe';
   const riskState = getExpeditionVisualState(dangerLevel, isCatastrophe);
   const stateMeta = getExpeditionStateMeta(riskState);
+  const thresholdPercentage = Math.min(Math.max((catastropheThreshold ?? 0.9) * 100, 0), 100);
+  const thresholdDelta = thresholdPercentage - percentage;
+  const nearThreshold = !isCatastrophe && thresholdDelta <= 5;
 
   const statusColor = isCatastrophe
     ? 'text-destructive'
@@ -83,13 +87,29 @@ export function DangerMeter({ dangerLevel, status, trend }: DangerMeterProps) {
         </div>
 
         <div className="pointer-events-none absolute inset-y-2 left-[60%] w-px bg-amber-300/60" aria-hidden="true" />
-        <div className="pointer-events-none absolute inset-y-2 left-[85%] w-px bg-destructive/70" aria-hidden="true" />
+        <div className="pointer-events-none absolute inset-y-2 left-[85%] w-px bg-destructive/80" aria-hidden="true" />
       </div>
 
       <div className="flex justify-between text-[8px] font-mono text-muted-foreground uppercase tracking-[0.35em] pt-1 opacity-60">
         <span>Min_Safe</span>
         <span>Warning_Threshold</span>
-        <span>Critical_Evac</span>
+        <span>Catastrophe_Threshold</span>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono uppercase tracking-[0.16em]">
+        <span className="text-muted-foreground">Umbral catástrofe: {thresholdPercentage.toFixed(1)}%</span>
+        {isCatastrophe ? (
+          <span className="text-destructive">Umbral superado</span>
+        ) : (
+          <span className={cn(thresholdDelta <= 0 ? 'text-destructive' : 'text-amber-300')}>
+            Margen actual: {Math.max(0, thresholdDelta).toFixed(1)} pp
+          </span>
+        )}
+        {nearThreshold && (
+          <Badge variant="outline" className="border-amber-500/60 bg-amber-500/15 text-amber-300 text-[9px] uppercase tracking-widest">
+            Cerca del umbral
+          </Badge>
+        )}
       </div>
 
       <p className="text-[10px] font-mono uppercase tracking-[0.16em] text-muted-foreground">

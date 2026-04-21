@@ -241,4 +241,34 @@ describe('run.calculator', () => {
     expect(multipliers.currencyMultiplier).toBeLessThanOrEqual(2.5);
     expect(multipliers.xpMultiplier).toBeLessThanOrEqual(2.2);
   });
+
+  it('applies trade-off synergy with higher gains but tighter catastrophe margin', () => {
+    const volatileSnapshot = {
+      HEAD: 'helmet_hazard_predictor',
+      BODY: 'basic_work_suit',
+      HANDS: 'industrial_work_gloves',
+      TOOL_PRIMARY: 'tool_resonance_scanner',
+      TOOL_SECONDARY: null,
+      BACKPACK: 'extended_cargo_backpack',
+    };
+
+    const controlSnapshot = {
+      ...volatileSnapshot,
+      TOOL_PRIMARY: 'portable_thermal_cutter',
+    };
+
+    const volatileSynergies = resolveActiveBuildSynergies(volatileSnapshot).map((entry) => entry.id);
+    expect(volatileSynergies).toContain('volatile_signal');
+
+    const volatileMultipliers = computeEquipmentOutcomeMultipliers(volatileSnapshot);
+    const controlMultipliers = computeEquipmentOutcomeMultipliers(controlSnapshot);
+
+    expect(volatileMultipliers.lootMultiplier).toBeGreaterThan(controlMultipliers.lootMultiplier);
+    expect(volatileMultipliers.xpMultiplier).toBeGreaterThan(controlMultipliers.xpMultiplier);
+
+    const volatileDangerConfig = applyEquipmentToDangerConfig(SHIPYARD_CEMETERY_CONFIG, volatileSnapshot);
+    const controlDangerConfig = applyEquipmentToDangerConfig(SHIPYARD_CEMETERY_CONFIG, controlSnapshot);
+
+    expect(volatileDangerConfig.catastropheThreshold).toBeLessThan(controlDangerConfig.catastropheThreshold);
+  });
 });

@@ -65,6 +65,22 @@ export const ITEM_FAMILY_BY_ID: Record<string, EquipmentFamily> = {
 
 export const BUILD_SYNERGIES: BuildSynergyDefinition[] = [
   {
+    id: 'volatile_signal',
+    name: 'Señal Volátil',
+    description: 'Lectura agresiva: más botín y XP, a costa de menor margen de catástrofe.',
+    priority: 25,
+    conditions: {
+      families: { SCOUT: 1, UTILITY: 1 },
+      requiredSlots: ['HEAD', 'TOOL_PRIMARY'],
+    },
+    effects: {
+      lootMultiplierBonus: 0.14,
+      xpMultiplierBonus: 0.08,
+      dangerResistanceBonus: -0.03,
+      catastropheThresholdBonus: -0.02,
+    },
+  },
+  {
     id: 'survey_chain',
     name: 'Cadena de Prospección',
     description: 'SCOUT + SALVAGER sincronizados elevan la calidad de extracción.',

@@ -16,6 +16,7 @@ export interface ExtractionStatusAggregateRow {
 export interface AuditLogWindowRow {
   createdAt: Date;
   payload: unknown;
+  userId?: string | null;
 }
 
 export const EconomyObservabilityRepository = {
@@ -104,6 +105,7 @@ export const EconomyObservabilityRepository = {
       select: {
         createdAt: true,
         payload: true,
+        userId: true,
       },
       orderBy: {
         createdAt: 'asc',

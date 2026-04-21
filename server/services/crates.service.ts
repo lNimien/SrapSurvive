@@ -4,10 +4,77 @@ import { db } from '@/server/db/client';
 import { CRATE_DEFINITIONS, CrateDefinition, getCrateById, getRarityFromItemDefinitionId } from '@/config/crates.config';
 import { ITEM_CATALOG } from '@/config/game.config';
 import { CrateDTO, CrateOpenResultDTO, CrateRewardPreviewDTO } from '@/types/dto.types';
-import { selectWeightedReward, toProbabilityPercent } from '@/server/domain/crates/crates.logic';
+import {
+  computeDynamicCratePrice,
+  computePityState,
+  isEpicOrHigherRarity,
+  selectWeightedReward,
+  toProbabilityPercent,
+} from '@/server/domain/crates/crates.logic';
 import { DomainError } from '@/server/domain/inventory/inventory.service';
 
 type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
+
+const CRATE_OPEN_AUDIT_ACTION = 'crate.open';
+const CRATE_DYNAMIC_PRICING_POLICY = {
+  incrementPerOpenPercent: 12,
+  maxMultiplierPercent: 220,
+} as const;
+
+const CRATE_PITY_THRESHOLD_BY_TIER: Record<CrateDefinition['visualTier'], number> = {
+  SCAVENGER: 12,
+  TACTICAL: 10,
+  RELIC: 8,
+};
+
+interface ParsedCrateOpenAudit {
+  crateId: string;
+  rewardRarity: string | null;
+}
+
+function startOfUtcDay(now: Date): Date {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
+}
+
+function getPityThreshold(crate: CrateDefinition): number {
+  return CRATE_PITY_THRESHOLD_BY_TIER[crate.visualTier] ?? 10;
+}
+
+function parseCrateOpenAuditPayload(payload: unknown): ParsedCrateOpenAudit | null {
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+
+  const casted = payload as Record<string, unknown>;
+  const crateId = typeof casted.crateId === 'string' ? casted.crateId : null;
+  if (!crateId) {
+    return null;
+  }
+
+  return {
+    crateId,
+    rewardRarity: typeof casted.rewardRarity === 'string' ? casted.rewardRarity : null,
+  };
+}
+
+function computeOpensWithoutEpicFromHistory(rows: { payload: unknown }[], crateId: string): number {
+  let opensWithoutEpic = 0;
+
+  for (const row of rows) {
+    const parsed = parseCrateOpenAuditPayload(row.payload);
+    if (!parsed || parsed.crateId !== crateId) {
+      continue;
+    }
+
+    if (parsed.rewardRarity === 'EPIC' || parsed.rewardRarity === 'LEGENDARY' || parsed.rewardRarity === 'CORRUPTED') {
+      break;
+    }
+
+    opensWithoutEpic += 1;
+  }
+
+  return opensWithoutEpic;
+}
 
 async function ensureItemDefinitionIds(tx: TxClient, internalKeys: string[]): Promise<Map<string, string>> {
   const uniqueKeys = [...new Set(internalKeys)];
@@ -77,8 +144,17 @@ function toRewardPreview(crate: CrateDefinition): CrateRewardPreviewDTO[] {
     .sort((left, right) => right.probabilityPercent - left.probabilityPercent);
 }
 
-function toCrateDTO(crate: CrateDefinition, playerLevel: number): CrateDTO {
+function toCrateDTO(
+  crate: CrateDefinition,
+  playerLevel: number,
+  dailyOpenCount: number,
+  opensWithoutEpic: number,
+): CrateDTO {
   const minLevel = crate.minLevel ?? 1;
+  const pityThreshold = getPityThreshold(crate);
+  const pityState = computePityState(pityThreshold, opensWithoutEpic);
+  const currentPriceCC = computeDynamicCratePrice(crate.priceCC, dailyOpenCount, CRATE_DYNAMIC_PRICING_POLICY);
+  const nextPriceCC = computeDynamicCratePrice(crate.priceCC, dailyOpenCount + 1, CRATE_DYNAMIC_PRICING_POLICY);
 
   return {
     id: crate.id,
@@ -86,24 +162,55 @@ function toCrateDTO(crate: CrateDefinition, playerLevel: number): CrateDTO {
     description: crate.description,
     imagePath: crate.imagePath,
     priceCC: crate.priceCC,
+    currentPriceCC,
+    nextPriceCC,
+    dailyOpenCount,
     visualTier: crate.visualTier,
     available: crate.available,
     minLevel,
     unlocked: crate.available && playerLevel >= minLevel,
+    pityThreshold,
+    pityToEpic: pityState.pityToEpic,
     rewards: toRewardPreview(crate),
   };
 }
 
 export const CratesService = {
   async getCratesCatalog(userId: string): Promise<CrateDTO[]> {
-    const progression = await db.userProgression.findUnique({
-      where: { userId },
-      select: { currentLevel: true },
-    });
+    const now = new Date();
+    const dayStart = startOfUtcDay(now);
+
+    const [progression, dailyOpenCount, recentOpenRows] = await Promise.all([
+      db.userProgression.findUnique({
+        where: { userId },
+        select: { currentLevel: true },
+      }),
+      db.auditLog.count({
+        where: {
+          userId,
+          action: CRATE_OPEN_AUDIT_ACTION,
+          createdAt: { gte: dayStart },
+        },
+      }),
+      db.auditLog.findMany({
+        where: {
+          userId,
+          action: CRATE_OPEN_AUDIT_ACTION,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 200,
+        select: { payload: true },
+      }),
+    ]);
 
     const playerLevel = progression?.currentLevel ?? 1;
 
-    return CRATE_DEFINITIONS.map((crate) => toCrateDTO(crate, playerLevel));
+    return CRATE_DEFINITIONS.map((crate) => toCrateDTO(
+      crate,
+      playerLevel,
+      dailyOpenCount,
+      computeOpensWithoutEpicFromHistory(recentOpenRows, crate.id),
+    ));
   },
 
   async openCrate(userId: string, crateId: string): Promise<CrateOpenResultDTO> {
@@ -113,7 +220,10 @@ export const CratesService = {
     }
 
     return db.$transaction(async (tx) => {
-      const [progression, latestLedger] = await Promise.all([
+      const now = new Date();
+      const dayStart = startOfUtcDay(now);
+
+      const [progression, latestLedger, dailyOpenCount, recentOpenRows] = await Promise.all([
         tx.userProgression.findUnique({
           where: { userId },
           select: { currentLevel: true },
@@ -121,6 +231,22 @@ export const CratesService = {
         tx.currencyLedger.findFirst({
           where: { userId },
           orderBy: { createdAt: 'desc' },
+        }),
+        tx.auditLog.count({
+          where: {
+            userId,
+            action: CRATE_OPEN_AUDIT_ACTION,
+            createdAt: { gte: dayStart },
+          },
+        }),
+        tx.auditLog.findMany({
+          where: {
+            userId,
+            action: CRATE_OPEN_AUDIT_ACTION,
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 200,
+          select: { payload: true },
         }),
       ]);
 
@@ -135,15 +261,35 @@ export const CratesService = {
       }
 
       const currentBalance = latestLedger?.balanceAfter ?? 0;
-      if (currentBalance < crate.priceCC) {
+      const currentPriceCC = computeDynamicCratePrice(crate.priceCC, dailyOpenCount, CRATE_DYNAMIC_PRICING_POLICY);
+      const nextPriceCC = computeDynamicCratePrice(crate.priceCC, dailyOpenCount + 1, CRATE_DYNAMIC_PRICING_POLICY);
+      if (currentBalance < currentPriceCC) {
         throw new DomainError('INSUFFICIENT_FUNDS', 'Créditos insuficientes para abrir esta caja.');
       }
 
-      const selected = selectWeightedReward(crate.rewards);
+      const pityThreshold = getPityThreshold(crate);
+      const opensWithoutEpic = computeOpensWithoutEpicFromHistory(recentOpenRows, crate.id);
+      const pityState = computePityState(pityThreshold, opensWithoutEpic);
+
+      const epicOrHigherRewards = crate.rewards.filter((reward) => {
+        const rarity = getRarityFromItemDefinitionId(reward.itemDefinitionId);
+        return isEpicOrHigherRarity(rarity);
+      });
+
+      const rewardPool = pityState.shouldForceEpic && epicOrHigherRewards.length > 0
+        ? epicOrHigherRewards
+        : crate.rewards;
+
+      const selected = selectWeightedReward(rewardPool);
       const rewardCatalog = ITEM_CATALOG.find((item) => item.id === selected.reward.itemDefinitionId);
       if (!rewardCatalog) {
         throw new DomainError('NOT_FOUND', `Recompensa inválida en la configuración del crate: ${selected.reward.itemDefinitionId}`);
       }
+
+      const rewardRarity = getRarityFromItemDefinitionId(selected.reward.itemDefinitionId);
+      const pityTriggered = pityState.shouldForceEpic && epicOrHigherRewards.length > 0;
+      const opensWithoutEpicAfter = isEpicOrHigherRarity(rewardRarity) ? 0 : opensWithoutEpic + 1;
+      const pityAfter = computePityState(pityThreshold, opensWithoutEpicAfter);
 
       const definitionIds = await ensureItemDefinitionIds(tx, [selected.reward.itemDefinitionId]);
       const rewardDefinitionId = definitionIds.get(selected.reward.itemDefinitionId);
@@ -155,8 +301,8 @@ export const CratesService = {
       await tx.currencyLedger.create({
         data: {
           userId,
-          amount: -crate.priceCC,
-          balanceAfter: currentBalance - crate.priceCC,
+          amount: -currentPriceCC,
+          balanceAfter: currentBalance - currentPriceCC,
           entryType: 'PURCHASE',
           referenceId: `crate_open_${crate.id}`,
         },
@@ -194,8 +340,15 @@ export const CratesService = {
           payload: {
             crateId: crate.id,
             crateName: crate.name,
-            spentCC: crate.priceCC,
+            basePriceCC: crate.priceCC,
+            spentCC: currentPriceCC,
+            nextPriceCC,
+            dailyOpenCount: dailyOpenCount + 1,
+            pityThreshold,
+            pityToEpic: pityAfter.pityToEpic,
+            pityTriggered,
             rewardItemDefinitionId: selected.reward.itemDefinitionId,
+            rewardRarity,
             rewardQuantity: selected.quantity,
           },
         },
@@ -204,18 +357,23 @@ export const CratesService = {
       return {
         crateId: crate.id,
         crateName: crate.name,
-        spentCC: crate.priceCC,
-        newBalance: currentBalance - crate.priceCC,
+        basePriceCC: crate.priceCC,
+        spentCC: currentPriceCC,
+        nextPriceCC,
+        dailyOpenCount: dailyOpenCount + 1,
+        newBalance: currentBalance - currentPriceCC,
+        pityThreshold,
+        pityToEpic: pityAfter.pityToEpic,
+        pityTriggered,
         reward: {
           itemDefinitionId: selected.reward.itemDefinitionId,
           displayName: rewardCatalog.displayName,
-          rarity: getRarityFromItemDefinitionId(selected.reward.itemDefinitionId),
+          rarity: rewardRarity,
           iconKey: rewardCatalog.iconKey,
           quantity: selected.quantity,
         },
-        openedAt: new Date().toISOString(),
+        openedAt: now.toISOString(),
       };
     });
   },
 };
-

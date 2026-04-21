@@ -96,4 +96,144 @@ describe('economy observability service internals', () => {
       { itemDefinitionId: 'energy_cell', quantity: 30 },
     ]);
   });
+
+  it('parses run mutator audit payload and aggregates metrics by mutator+mode', () => {
+    const extractedRow = economyObservabilityInternals.parseRunMutatorRow(
+      {
+        createdAt: new Date('2026-04-21T10:00:00.000Z'),
+        payload: {
+          runMode: 'SAFE',
+          elapsedSeconds: 120,
+          runMutator: { id: 'dense_scrapyard', label: 'Campo denso', summary: 'loot up' },
+        },
+      },
+      'EXTRACTED',
+    );
+
+    const failedRow = economyObservabilityInternals.parseRunMutatorRow(
+      {
+        createdAt: new Date('2026-04-21T10:05:00.000Z'),
+        payload: {
+          runMode: 'SAFE',
+          elapsedSeconds: 60,
+          runMutator: { id: 'dense_scrapyard', label: 'Campo denso', summary: 'loot up' },
+        },
+      },
+      'FAILED',
+    );
+
+    expect(extractedRow).not.toBeNull();
+    expect(failedRow).not.toBeNull();
+
+    const aggregated = economyObservabilityInternals.aggregateRunMutatorWindow(
+      [extractedRow, failedRow].filter((sample): sample is NonNullable<typeof sample> => sample !== null),
+    );
+
+    expect(aggregated).toHaveLength(1);
+    expect(aggregated[0]).toMatchObject({
+      mutatorId: 'dense_scrapyard',
+      runMode: 'SAFE',
+      totalRuns: 2,
+      extractedRuns: 1,
+      failedRuns: 1,
+      extractionRate: 0.5,
+      averageDurationSeconds: 90,
+      guardrailStatus: 'insufficient_data',
+    });
+  });
+
+  it('classifies mutator guardrails with sample and extreme winrate', () => {
+    const rows = Array.from({ length: 12 }, (_, index) => ({
+      createdAt: new Date(`2026-04-21T10:${String(index).padStart(2, '0')}:00.000Z`),
+      runMode: 'HARD' as const,
+      mutatorId: 'unstable_currents',
+      elapsedSeconds: 140,
+      outcome: 'EXTRACTED' as const,
+    }));
+
+    const aggregated = economyObservabilityInternals.aggregateRunMutatorWindow(rows);
+
+    expect(aggregated).toHaveLength(1);
+    expect(aggregated[0]?.guardrailStatus).toBe('critical');
+    expect(aggregated[0]?.recommendation).toContain('nerf');
+  });
+
+  it('builds top action pack suggestions sorted by severity and sample', () => {
+    const pack = economyObservabilityInternals.buildRunMutatorActionPack(
+      [
+        {
+          mutatorId: 'dense_scrapyard',
+          runMode: 'SAFE',
+          totalRuns: 20,
+          extractedRuns: 19,
+          failedRuns: 1,
+          extractionRate: 0.95,
+          averageDurationSeconds: 120,
+          guardrailStatus: 'critical',
+          recommendation: 'critical high',
+        },
+        {
+          mutatorId: 'unstable_currents',
+          runMode: 'HARD',
+          totalRuns: 16,
+          extractedRuns: 15,
+          failedRuns: 1,
+          extractionRate: 0.9375,
+          averageDurationSeconds: 150,
+          guardrailStatus: 'warning',
+          recommendation: 'warning high',
+        },
+      ],
+      new Date('2026-04-22T00:00:00.000Z'),
+      {
+        hasActiveIncident: false,
+        recentAppliedAdjustments: new Set<string>(),
+      },
+    );
+
+    expect(pack.generatedAt).toBe('2026-04-22T00:00:00.000Z');
+    expect(pack.policySummary.length).toBeGreaterThan(0);
+    expect(pack.suggestions).toHaveLength(2);
+    expect(pack.suggestions[0]).toMatchObject({
+      mutatorId: 'dense_scrapyard',
+      actionType: 'nerf_rewards',
+      suggestedDeltaPercent: -8,
+      applicability: 'APPLICABLE',
+    });
+    expect(pack.suggestions[1]).toMatchObject({
+      mutatorId: 'unstable_currents',
+      actionType: 'buff_difficulty',
+      suggestedDeltaPercent: 5,
+      applicability: 'APPLICABLE',
+    });
+  });
+
+  // Mutator adjustment history parsing now lives in MutatorTuningService.
+
+  it('blocks suggestions when incident is active or mutator already adjusted recently', () => {
+    const pack = economyObservabilityInternals.buildRunMutatorActionPack(
+      [
+        {
+          mutatorId: 'dense_scrapyard',
+          runMode: 'SAFE',
+          totalRuns: 20,
+          extractedRuns: 19,
+          failedRuns: 1,
+          extractionRate: 0.95,
+          averageDurationSeconds: 120,
+          guardrailStatus: 'critical',
+          recommendation: 'critical high',
+        },
+      ],
+      new Date('2026-04-22T00:00:00.000Z'),
+      {
+        hasActiveIncident: true,
+        recentAppliedAdjustments: new Set(['dense_scrapyard:SAFE']),
+      },
+    );
+
+    expect(pack.suggestions).toHaveLength(1);
+    expect(pack.suggestions[0]?.applicability).toBe('BLOCKED');
+    expect(pack.suggestions[0]?.blockedReasons.length).toBeGreaterThanOrEqual(2);
+  });
 });

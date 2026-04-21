@@ -1,8 +1,8 @@
 # Scrap & Survive — Game Design Document
 
 > **Status:** Living document. Referencia de diseño de producto y sistemas de juego.
-> **Fase actual:** MVP (Fase 0)
-> **Estado operativo técnico:** D.4a completado (guardrails/claims) · D.4b pendiente (observabilidad operativa avanzada)
+> **Fase actual:** Post-MVP (Fase D en operación)
+> **Estado operativo técnico:** D.4a completado (guardrails/claims) · D.4b completado (observabilidad operativa de claims + hardening de concurrencia)
 
 ---
 

@@ -65,6 +65,13 @@ export interface RunStateDTO {
   pendingLoot?: PendingLootDTO[];
   elapsedSeconds?: number;
   anomaly?: AnomalyDTO | null;
+  runMutator?: RunMutatorDTO | null;
+}
+
+export interface RunMutatorDTO {
+  id: 'unstable_currents' | 'dense_scrapyard' | 'narrow_escape';
+  label: string;
+  summary: string;
 }
 
 export interface RunStartedDTO {
@@ -352,6 +359,11 @@ export interface UserContractDTO {
   rewardXP: number;
   status: 'ACTIVE' | 'COMPLETED' | 'EXPIRED';
   expiresAt: string; // ISO
+  chainStage?: number | null;
+  chainStageCount?: number | null;
+  chainState?: 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | null;
+  chainBonusCC?: number;
+  chainBonusXP?: number;
 }
 
 export interface RecipeIngredientDTO {
@@ -406,18 +418,29 @@ export interface CrateDTO {
   description: string;
   imagePath: string;
   priceCC: number;
+  currentPriceCC: number;
+  nextPriceCC: number;
+  dailyOpenCount: number;
   visualTier: CrateVisualTierDTO;
   available: boolean;
   minLevel: number;
   unlocked: boolean;
+  pityThreshold: number;
+  pityToEpic: number;
   rewards: CrateRewardPreviewDTO[];
 }
 
 export interface CrateOpenResultDTO {
   crateId: string;
   crateName: string;
+  basePriceCC: number;
   spentCC: number;
+  nextPriceCC: number;
+  dailyOpenCount: number;
   newBalance: number;
+  pityThreshold: number;
+  pityToEpic: number;
+  pityTriggered: boolean;
   reward: {
     itemDefinitionId: string;
     displayName: string;
@@ -439,10 +462,35 @@ export interface PlayerStateDTO {
   equipment: EquipmentDTO;
   activeRun: RunStateDTO | null;
   contracts: UserContractDTO[];
+  nextContractRefreshCostCC?: number;
   upgrades: AccountUpgradeDTO[];
   achievements: AchievementDTO[];
   activeSynergies: BuildSynergyDTO[];
   activeArchetype: BuildSynergyDTO | null;
   weeklyGoals: WeeklyGoalsDTO;
   analytics: PlayerAnalyticsDTO;
+}
+
+export interface MutatorAdjustmentProfileDTO {
+  rewardDeltaPercent: number;
+  dangerPressureDeltaPercent: number;
+}
+
+export interface ApplyMutatorBalanceSuggestionResultDTO {
+  applied: boolean;
+  dryRun: boolean;
+  mutatorId: string;
+  runMode: 'SAFE' | 'HARD';
+  actionType: 'buff_difficulty' | 'nerf_rewards' | 'hold';
+  suggestedDeltaPercent: number;
+  beforeProfile: MutatorAdjustmentProfileDTO;
+  afterProfile: MutatorAdjustmentProfileDTO;
+  blockedReasons: string[];
+}
+
+export interface MutatorTuningCapsDTO {
+  mutatorId: string;
+  runMode: 'SAFE' | 'HARD';
+  maxAbsRewardDeltaPercent: number;
+  maxAbsDangerDeltaPercent: number;
 }

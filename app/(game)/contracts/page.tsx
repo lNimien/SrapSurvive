@@ -27,7 +27,10 @@ export default async function ContractsPage() {
           Entregas diarias para sostener el flujo de créditos y XP.
         </p>
       </header>
-      <ContractsPanel contracts={playerState.contracts} />
+      <ContractsPanel
+        contracts={playerState.contracts}
+        nextRefreshCostCC={playerState.nextContractRefreshCostCC ?? 85}
+      />
     </main>
   );
 }

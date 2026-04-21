@@ -99,6 +99,9 @@ model User {
   upgradeProgress   UpgradeNodeProgress[]
   upgradeResearches UpgradeResearchQueue[]
   auditLogs         AuditLog[]
+  mutatorTuningOverrideUpdates MutatorTuningOverride[] @relation("MutatorTuningOverrideUpdatedBy")
+  mutatorTuningHistoryEntries  MutatorTuningHistory[]  @relation("MutatorTuningHistoryAppliedBy")
+  mutatorTuningPolicyUpdates   MutatorTuningPolicy[]   @relation("MutatorTuningPolicyUpdatedBy")
 }
 
 model Account {
@@ -389,4 +392,62 @@ model UpgradeResearchQueue {
 
   @@index([userId, status])
   @@index([userId, completesAt])
+}
+
+/// Active tuning override per mutator + mode (one row per pair).
+model MutatorTuningOverride {
+  id                        String   @id @default(cuid())
+  mutatorId                 String
+  runMode                   String // SAFE | HARD
+  rewardDeltaPercent        Int      @default(0)
+  dangerPressureDeltaPercent Int     @default(0)
+  version                   Int      @default(1)
+  updatedByUserId           String?
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  updatedByUser User? @relation("MutatorTuningOverrideUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([mutatorId, runMode])
+  @@index([runMode])
+  @@index([updatedAt(sort: Desc)])
+}
+
+/// Append-only history of every applied/rollback mutator adjustment.
+model MutatorTuningHistory {
+  id                           String   @id @default(cuid())
+  mutatorId                    String
+  runMode                      String // SAFE | HARD
+  actionType                   String // buff_difficulty | nerf_rewards | hold
+  suggestedDeltaPercent        Int      @default(0)
+  beforeRewardDeltaPercent     Int      @default(0)
+  beforeDangerDeltaPercent     Int      @default(0)
+  afterRewardDeltaPercent      Int      @default(0)
+  afterDangerDeltaPercent      Int      @default(0)
+  appliedByUserId              String?
+  sourceGeneratedAt            DateTime?
+  createdAt                    DateTime @default(now())
+
+  appliedByUser User? @relation("MutatorTuningHistoryAppliedBy", fields: [appliedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([mutatorId, runMode, createdAt(sort: Desc)])
+  @@index([createdAt(sort: Desc)])
+}
+
+/// Per-mutator caps to constrain tuning deltas by mode.
+model MutatorTuningPolicy {
+  id                         String   @id @default(cuid())
+  mutatorId                  String
+  runMode                    String // SAFE | HARD
+  maxAbsRewardDeltaPercent   Int      @default(10)
+  maxAbsDangerDeltaPercent   Int      @default(10)
+  updatedByUserId            String?
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+
+  updatedByUser User? @relation("MutatorTuningPolicyUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([mutatorId, runMode])
+  @@index([runMode])
+  @@index([updatedAt(sort: Desc)])
 }

@@ -31,15 +31,28 @@ const VISUAL_TIER_BADGE: Record<CrateDTO['visualTier'], string> = {
   RELIC: 'border-amber-400/50 text-amber-200 bg-amber-500/10',
 };
 
+const CRATE_DYNAMIC_INCREMENT_PERCENT = 12;
+const CRATE_DYNAMIC_CAP_PERCENT = 220;
+
+function computeDynamicPrice(basePriceCC: number, dailyOpenCount: number): number {
+  const multiplier = Math.min(1 + (CRATE_DYNAMIC_INCREMENT_PERCENT / 100) * Math.max(0, dailyOpenCount), CRATE_DYNAMIC_CAP_PERCENT / 100);
+  return Math.max(1, Math.round(basePriceCC * multiplier));
+}
+
 export function CratesShowcase({ crates, currencyBalance }: CratesShowcaseProps) {
   const { toast } = useToast();
   const [isPending, startTransition] = useTransition();
+  const [localCrates, setLocalCrates] = useState<CrateDTO[]>(crates);
+  const [localBalance, setLocalBalance] = useState<number>(currencyBalance);
   const [activeCrateId, setActiveCrateId] = useState<string | null>(null);
   const [openStage, setOpenStage] = useState<OpenStage>('idle');
   const [rollingLabel, setRollingLabel] = useState<string>('Calibrando compuerta...');
   const [openResult, setOpenResult] = useState<CrateOpenResultDTO | null>(null);
 
-  const activeCrate = useMemo(() => crates.find((crate) => crate.id === activeCrateId) ?? null, [activeCrateId, crates]);
+  const activeCrate = useMemo(
+    () => localCrates.find((crate) => crate.id === activeCrateId) ?? null,
+    [activeCrateId, localCrates],
+  );
 
   const startOpening = (crate: CrateDTO) => {
     if (!crate.unlocked || isPending) return;
@@ -74,6 +87,21 @@ export function CratesShowcase({ crates, currencyBalance }: CratesShowcaseProps)
       }
 
       setOpenResult(actionResult.data);
+      setLocalBalance(actionResult.data.newBalance);
+      setLocalCrates((current) => current.map((candidate) => {
+        const nextDailyOpenCount = actionResult.data.dailyOpenCount;
+        const isOpenedCrate = candidate.id === crate.id;
+
+        return {
+          ...candidate,
+          dailyOpenCount: nextDailyOpenCount,
+          currentPriceCC: isOpenedCrate
+            ? actionResult.data.nextPriceCC
+            : computeDynamicPrice(candidate.priceCC, nextDailyOpenCount),
+          nextPriceCC: computeDynamicPrice(candidate.priceCC, nextDailyOpenCount + 1),
+          pityToEpic: isOpenedCrate ? actionResult.data.pityToEpic : candidate.pityToEpic,
+        };
+      }));
       setOpenStage('revealed');
     });
   };
@@ -84,11 +112,18 @@ export function CratesShowcase({ crates, currencyBalance }: CratesShowcaseProps)
     setOpenResult(null);
   };
 
+  const canOpenAgain = Boolean(
+    activeCrate
+    && activeCrate.unlocked
+    && localBalance >= activeCrate.currentPriceCC
+    && !isPending,
+  );
+
   return (
     <section className="space-y-6">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {crates.map((crate) => {
-          const affordable = currencyBalance >= crate.priceCC;
+        {localCrates.map((crate) => {
+          const affordable = localBalance >= crate.currentPriceCC;
           const disabled = !crate.unlocked || !affordable || isPending;
 
           return (
@@ -121,9 +156,15 @@ export function CratesShowcase({ crates, currencyBalance }: CratesShowcaseProps)
                 <div className="flex items-center justify-between border border-yellow-500/20 bg-yellow-500/5 px-3 py-2">
                   <span className="text-[10px] uppercase tracking-widest text-yellow-300/70 font-mono">Precio</span>
                   <span className="text-sm font-mono text-yellow-300 flex items-center gap-1">
-                    <Coins className="h-3.5 w-3.5" /> {crate.priceCC} CC
+                    <Coins className="h-3.5 w-3.5" /> {crate.currentPriceCC} CC
                   </span>
                 </div>
+                <p className="text-[10px] font-mono text-muted-foreground">
+                  Base {crate.priceCC} CC · Próxima {crate.nextPriceCC} CC · Abiertas hoy {crate.dailyOpenCount}
+                </p>
+                <p className="text-[10px] font-mono text-fuchsia-200/90">
+                  Pity EPIC+: {crate.pityToEpic === 0 ? 'activa en próxima apertura' : `${crate.pityToEpic} apertura(s)`}
+                </p>
                 <div className="space-y-1.5">
                   <p className="text-[10px] uppercase tracking-widest text-primary/70 font-mono">Drops destacados</p>
                   <ul className="space-y-1">
@@ -187,10 +228,29 @@ export function CratesShowcase({ crates, currencyBalance }: CratesShowcaseProps)
                     Cantidad: x{openResult.reward.quantity} • Tier: {getTierLabel(openResult.reward.rarity)}
                   </p>
                   <p className="mt-3 text-xs font-mono text-yellow-300">Nuevo balance: {openResult.newBalance} CC</p>
+                  <p className="mt-1 text-[11px] font-mono text-fuchsia-200">
+                    Próximo costo: {openResult.nextPriceCC} CC · Pity restante: {openResult.pityToEpic}/{openResult.pityThreshold}
+                  </p>
                 </div>
-                <Button onClick={closeOverlay} className="uppercase tracking-wider font-semibold px-8">
-                  Continuar
-                </Button>
+                <div className="flex flex-col items-center justify-center gap-2 sm:flex-row">
+                  <Button
+                    onClick={() => {
+                      if (!activeCrate) {
+                        return;
+                      }
+
+                      startOpening(activeCrate);
+                    }}
+                    className="uppercase tracking-wider font-semibold px-8"
+                    disabled={!canOpenAgain}
+                    aria-label="Abrir la misma caja nuevamente"
+                  >
+                    Abrir de nuevo
+                  </Button>
+                  <Button onClick={closeOverlay} variant="outline" className="uppercase tracking-wider font-semibold px-8">
+                    Continuar
+                  </Button>
+                </div>
               </div>
             )}
           </div>
