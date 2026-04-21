@@ -14,6 +14,7 @@ describe('tier helpers', () => {
     expect(getRarityVisuals('RARE')).toMatchObject({
       borderClass: 'border-l-violet-400',
       textClass: 'text-violet-300',
+      badgeClass: 'border-violet-400/50 bg-violet-500/10 text-violet-200',
     });
 
     expect(getTierLabel('LEGENDARY')).toBe('Legendary');

@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { getActivityLine, getExpeditionVisualState } from '@/lib/utils/expedition-ui';
+import {
+  getActivityLine,
+  getExpeditionStateMeta,
+  getExpeditionVisualState,
+} from '@/lib/utils/expedition-ui';
 
 describe('expedition ui helpers', () => {
   it('maps danger bands into stable/alert/critical states', () => {
@@ -16,5 +20,22 @@ describe('expedition ui helpers', () => {
 
     expect(line0).not.toBe(line1);
     expect(getActivityLine('stable', 3)).toBe(line0);
+  });
+
+  it('returns consistent visual metadata for each expedition state', () => {
+    expect(getExpeditionStateMeta('stable')).toMatchObject({
+      label: 'Estable',
+      badgeClass: expect.stringContaining('emerald'),
+    });
+
+    expect(getExpeditionStateMeta('alert')).toMatchObject({
+      label: 'Alerta',
+      progressClass: expect.stringContaining('amber'),
+    });
+
+    expect(getExpeditionStateMeta('critical')).toMatchObject({
+      label: 'Crítico',
+      guidance: expect.stringContaining('extracción inmediata'),
+    });
   });
 });

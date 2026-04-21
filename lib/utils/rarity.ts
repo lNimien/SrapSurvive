@@ -10,6 +10,8 @@ export interface RarityVisualTokens {
   borderClass: string;
   textClass: string;
   bgClass: string;
+  accentClass: string;
+  badgeClass: string;
 }
 
 export function resolveItemTier(input: ItemRarityDTO | ItemTier): ItemTier {
@@ -35,5 +37,7 @@ export function getRarityVisuals(rarity: ItemRarityDTO): RarityVisualTokens {
     borderClass: meta.borderClass,
     textClass: meta.textClass,
     bgClass: meta.bgClass,
+    accentClass: meta.accentClass,
+    badgeClass: meta.badgeClass,
   };
 }

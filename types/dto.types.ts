@@ -346,6 +346,8 @@ export interface UserContractDTO {
   requiredItemIcon: string;
   requiredQuantity: number;
   currentQuantity: number;
+  /** Cantidad disponible actualmente en inventario para entregar */
+  availableQuantity: number;
   rewardCC: number;
   rewardXP: number;
   status: 'ACTIVE' | 'COMPLETED' | 'EXPIRED';

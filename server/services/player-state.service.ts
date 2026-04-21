@@ -165,7 +165,7 @@ function toUserContractDTO(contract: {
   rewardXP: number;
   status: 'ACTIVE' | 'COMPLETED' | 'EXPIRED';
   expiresAt: Date;
-}): UserContractDTO {
+}, availableByItemDefId: Record<string, number>): UserContractDTO {
   const itemDef = ITEM_CATALOG.find(i => i.id === contract.requiredItemDefId);
   return {
     id: contract.id,
@@ -174,11 +174,19 @@ function toUserContractDTO(contract: {
     requiredItemIcon: itemDef?.iconKey || 'icon_unknown',
     requiredQuantity: contract.requiredQuantity,
     currentQuantity: contract.currentQuantity,
+    availableQuantity: availableByItemDefId[contract.requiredItemDefId] ?? 0,
     rewardCC: contract.rewardCC,
     rewardXP: contract.rewardXP,
     status: contract.status,
     expiresAt: contract.expiresAt.toISOString(),
   };
+}
+
+function toInventoryAvailabilityMap(inventory: InventoryItemDomain[]): Record<string, number> {
+  return inventory.reduce<Record<string, number>>((acc, item) => {
+    acc[item.itemDefinitionId] = item.quantity;
+    return acc;
+  }, {});
 }
 
 // ─── Service ──────────────────────────────────────────────────────────────────
@@ -190,10 +198,11 @@ export const PlayerStateService = {
     await ProvisioningService.ensureProvisioned(userId);
 
     // Parallel fetch — all reads, no writes, safe to parallelise
-    const [profile, currencyBalance, equipment, activeRunDomain, contracts, upgrades, achievements] = await Promise.all([
+    const [profile, currencyBalance, equipment, inventory, activeRunDomain, contracts, upgrades, achievements] = await Promise.all([
       UserRepository.getUserProfile(userId),
       EconomyRepository.getCurrentBalance(userId),
       InventoryRepository.getEquipmentByUser(userId),
+      InventoryRepository.getInventoryByUser(userId),
       RunRepository.findActiveRun(userId),
       ContractService.ensureDailyContracts(userId),
       AccountUpgradeService.getUpgradesForPlayer(userId),
@@ -227,6 +236,8 @@ export const PlayerStateService = {
         : Promise.resolve(EMPTY_ANALYTICS),
     ]);
 
+    const availableByItemDefId = toInventoryAvailabilityMap(inventory);
+
     return {
       userId,
       displayName: profile.displayName,
@@ -236,7 +247,7 @@ export const PlayerStateService = {
       currencyBalance,
       equipment: toEquipmentDTO(equipment),
       activeRun,
-      contracts: contracts.map(toUserContractDTO),
+      contracts: contracts.map((contract) => toUserContractDTO(contract, availableByItemDefId)),
       upgrades,
       achievements,
       activeSynergies,

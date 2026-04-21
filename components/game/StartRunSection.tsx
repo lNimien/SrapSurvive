@@ -4,6 +4,8 @@ import { useState, useTransition } from 'react';
 import { startRunAction } from '../../server/actions/run.actions';
 import { isZoneUnlockedForLevel, ZONE_CONFIGS } from '../../config/game.config';
 import { RunModeDTO } from '@/types/dto.types';
+import { useToast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils/cn';
 
 interface StartRunSectionProps {
   hasActiveRun: boolean;
@@ -16,6 +18,7 @@ function getInitialZoneId(playerLevel: number): string {
 }
 
 export function StartRunSection({ hasActiveRun, playerLevel }: StartRunSectionProps) {
+  const { toast } = useToast();
   const [isPending, startTransition] = useTransition();
   const [zoneId, setZoneId] = useState<string>(() => getInitialZoneId(playerLevel));
   const [runMode, setRunMode] = useState<RunModeDTO>('SAFE');
@@ -26,7 +29,11 @@ export function StartRunSection({ hasActiveRun, playerLevel }: StartRunSectionPr
     startTransition(async () => {
       const result = await startRunAction({ zoneId, runMode });
       if (!result.success) {
-        alert(`Error: ${result.error.message}`);
+        toast({
+          title: 'No se pudo iniciar la expedición',
+          description: result.error.message,
+          variant: 'destructive',
+        });
       }
     });
   };
@@ -36,7 +43,7 @@ export function StartRunSection({ hasActiveRun, playerLevel }: StartRunSectionPr
   }
 
   return (
-    <div className="start-run-section">
+    <div className="flex flex-col gap-3 rounded-sm border border-primary/15 bg-background/40 p-4">
       <label htmlFor="run-mode-select" className="sr-only">
         Seleccionar modo de expedición
       </label>
@@ -83,12 +90,15 @@ export function StartRunSection({ hasActiveRun, playerLevel }: StartRunSectionPr
 
       <button
         id="btn-launch-expedition"
-        className={`btn-launch ${isPending || isSelectedZoneLocked ? 'opacity-50 cursor-wait' : ''}`}
+        className={cn(
+          'inline-flex w-full items-center justify-center gap-2 border border-primary/40 bg-primary/15 px-4 py-3 font-sans text-sm font-bold uppercase tracking-[0.18em] text-primary transition-colors hover:bg-primary hover:text-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+          (isPending || isSelectedZoneLocked) && 'cursor-wait opacity-50 hover:bg-primary/15 hover:text-primary',
+        )}
         disabled={isPending || isSelectedZoneLocked}
         onClick={handleStartRun}
         aria-label="Lanzar expedición en la zona seleccionada"
       >
-        <span className="btn-launch-icon" aria-hidden="true">🚀</span>
+        <span aria-hidden="true">🚀</span>
         {isPending ? 'Preparando Nave...' : 'Lanzar Expedición'}
       </button>
     </div>

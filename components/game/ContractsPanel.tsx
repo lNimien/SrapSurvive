@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { UserContractDTO } from "@/types/dto.types";
 import {
   Card,
   CardContent,
-  CardHeader,
   CardDescription,
+  CardHeader,
   CardTitle,
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -21,62 +21,73 @@ import {
   AlertTriangle,
   CheckCircle2,
   Coins,
+  Lock,
   Package,
   RefreshCw,
   Timer,
   Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
+import {
+  ContractOperationalState,
+  getContractActionState,
+  getContractOperationalMeta,
+  getContractOperationalState,
+  getContractProgress,
+} from "@/lib/utils/contracts-ui";
 
 interface ContractsPanelProps {
   contracts: UserContractDTO[];
 }
+
+const STATUS_PRIORITY: Record<ContractOperationalState, number> = {
+  ready: 0,
+  incomplete: 1,
+  delivered: 2,
+  blocked: 3,
+};
 
 export function ContractsPanel({ contracts }: ContractsPanelProps) {
   const { toast } = useToast();
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const sortedContracts = [...contracts].sort((left, right) => {
-    const getPriority = (contract: UserContractDTO) => {
-      if (contract.status === "ACTIVE") {
-        return contract.currentQuantity >= contract.requiredQuantity ? 1 : 0;
+  const sortedContracts = useMemo(() => {
+    return [...contracts].sort((left, right) => {
+      const leftState = getContractOperationalState(left);
+      const rightState = getContractOperationalState(right);
+
+      const byStatus = STATUS_PRIORITY[leftState] - STATUS_PRIORITY[rightState];
+      if (byStatus !== 0) {
+        return byStatus;
       }
 
-      if (contract.status === "COMPLETED") {
-        return 2;
-      }
+      return new Date(left.expiresAt).getTime() - new Date(right.expiresAt).getTime();
+    });
+  }, [contracts]);
 
-      return 3;
-    };
-
-    const byPriority = getPriority(left) - getPriority(right);
-    if (byPriority !== 0) {
-      return byPriority;
+  const handleDeliver = async (contractId: string, quantityToDeliver: number) => {
+    if (quantityToDeliver <= 0) {
+      return;
     }
 
-    return (
-      new Date(left.expiresAt).getTime() - new Date(right.expiresAt).getTime()
-    );
-  });
-
-  const handleDeliver = async (contractId: string, maxQuantity: number) => {
     setLoadingId(contractId);
     try {
       const result = await deliverContractAction({
         contractId,
-        quantity: maxQuantity,
+        quantity: quantityToDeliver,
       });
+
       if (result.success) {
-        toast({ title: "Éxito", description: result.data.message });
+        toast({ title: "Entrega confirmada", description: result.data.message, variant: "success" });
       } else {
         toast({
-          title: "Error",
+          title: "No se pudo entregar",
           description: result.error.message,
           variant: "destructive",
         });
       }
-    } catch (error) {
+    } catch {
       toast({
         title: "Error",
         description: "Error de conexión al entregar materiales.",
@@ -98,6 +109,7 @@ export function ContractsPanel({ contracts }: ContractsPanelProps) {
         toast({
           title: "Contratos actualizados",
           description: result.data.message,
+          variant: "success",
         });
       } else {
         toast({
@@ -119,9 +131,9 @@ export function ContractsPanel({ contracts }: ContractsPanelProps) {
 
   if (!contracts || contracts.length === 0) {
     return (
-      <Card className="glass-panel border-primary/20 cyberpunk-box overflow-hidden">
+      <Card className="glass-panel overflow-hidden border-primary/20 cyberpunk-box">
         <CardContent className="pt-6 text-center">
-          <p className="text-muted-foreground font-mono uppercase tracking-tighter">
+          <p className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
             No hay contratos activos en este momento.
           </p>
         </CardContent>
@@ -130,18 +142,20 @@ export function ContractsPanel({ contracts }: ContractsPanelProps) {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between px-1">
+    <div className="flex flex-col gap-4" aria-live="polite">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-1">
         <div className="flex items-center gap-2">
-          <Zap className="w-5 h-5 text-yellow-400 fill-yellow-400/20" />
-          <h2 className="font-sans text-xl font-bold text-primary uppercase tracking-wider neon-text-cyan">
+          <Zap className="size-5 fill-yellow-400/20 text-yellow-400" aria-hidden="true" />
+          <h2 className="font-sans text-xl font-bold uppercase tracking-wider text-primary neon-text-cyan">
             Contratos Diarios
           </h2>
         </div>
+
         <div className="flex items-center gap-2">
           <Badge
             variant="outline"
-            className="border-primary/40 text-primary/70 font-mono text-[10px] py-0 px-2 uppercase tracking-widest bg-primary/5">
+            className="border-primary/40 bg-primary/5 px-2 py-0 text-[10px] font-mono uppercase tracking-widest text-primary/70"
+          >
             Reset: 00:00 UTC
           </Badge>
           <Button
@@ -150,10 +164,11 @@ export function ContractsPanel({ contracts }: ContractsPanelProps) {
             size="sm"
             onClick={handleRefreshContracts}
             disabled={isRefreshing}
-            className="h-7 px-2 border-primary/30 hover:bg-primary/10 text-[10px] font-mono uppercase tracking-wider"
-            aria-label="Refrescar contratos diarios">
+            className="h-7 border-primary/30 px-2 text-[10px] font-mono uppercase tracking-wider hover:bg-primary/10"
+            aria-label="Refrescar contratos diarios"
+          >
             <RefreshCw
-              className={cn("w-3.5 h-3.5 mr-1", isRefreshing && "animate-spin")}
+              className={cn("mr-1 size-3.5", isRefreshing && "animate-spin")}
               aria-hidden="true"
             />
             {isRefreshing ? "Refrescando" : "Refrescar"}
@@ -161,165 +176,156 @@ export function ContractsPanel({ contracts }: ContractsPanelProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         {sortedContracts.map((contract) => {
-          const progress = Math.min(
-            100,
-            (contract.currentQuantity / contract.requiredQuantity) * 100,
-          );
-          const isCompleted = contract.status === "COMPLETED";
-          const isExpired = contract.status === "EXPIRED";
+          const progress = getContractProgress(contract);
+          const state = getContractOperationalState(contract);
+          const meta = getContractOperationalMeta(state);
+          const action = getContractActionState(contract);
+          const isLoading = loadingId === contract.id;
           const expiresInMinutes = Math.max(
             0,
-            Math.floor(
-              (new Date(contract.expiresAt).getTime() - Date.now()) / 60_000,
-            ),
+            Math.floor((new Date(contract.expiresAt).getTime() - Date.now()) / 60_000),
           );
-          const isUrgent = !isCompleted && !isExpired && expiresInMinutes <= 45;
-          const isWarning =
-            !isCompleted && !isExpired && expiresInMinutes <= 120;
-          const urgencyLabel = isExpired
-            ? "Expirado"
-            : isUrgent
-              ? "Crítico"
-              : isWarning
-                ? "Urgente"
-                : "Estable";
+          const showCountdown = state === "incomplete" || state === "ready";
+          const isCriticalWindow = showCountdown && expiresInMinutes <= 45;
+          const isAlertWindow = showCountdown && !isCriticalWindow && expiresInMinutes <= 120;
 
           return (
             <Card
               key={contract.id}
               className={cn(
-                "glass-panel border-primary/20 transition-all duration-300 relative group overflow-hidden h-full flex flex-col",
-                isCompleted
-                  ? "border-green-500/30 bg-green-500/5"
-                  : "hover:border-primary/40",
-                isExpired && "opacity-50 grayscale pointer-events-none",
-              )}>
-              {/* Decorative corner */}
-              <div className="absolute top-0 right-0 w-8 h-8 pointer-events-none">
-                <div className="absolute top-0 right-0 w-[1px] h-4 bg-primary/40" />
-                <div className="absolute top-0 right-0 w-4 h-[1px] bg-primary/40" />
-              </div>
-
+                "group relative flex h-full flex-col overflow-hidden border-primary/20 bg-background/40 transition-all duration-300 glass-panel",
+                state === "ready" && "border-cyan-500/40 bg-cyan-500/5",
+                state === "delivered" && "border-emerald-500/35 bg-emerald-500/5",
+                state === "blocked" && "border-zinc-700/60 bg-zinc-900/50 opacity-85",
+              )}
+            >
               <CardHeader className="pb-2">
-                <div className="flex justify-between items-start">
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      "text-[10px] px-1.5 py-0 leading-tight uppercase font-mono tracking-tighter mb-2",
-                      isCompleted
-                        ? "text-green-400 border-green-500/50 bg-green-500/10"
-                        : isExpired
-                          ? "text-muted-foreground border-muted/30 bg-muted/10"
-                          : "text-primary/70 border-primary/30",
-                    )}>
-                    {isCompleted
-                      ? "Completado"
-                      : isExpired
-                        ? "Expirado"
-                        : "Activo"}
+                <div className="mb-2 flex items-start justify-between gap-2">
+                  <Badge variant="outline" className={cn("text-[10px] uppercase tracking-widest", meta.badgeClass)}>
+                    {meta.label}
                   </Badge>
-                  {!isCompleted && !isExpired && (
+
+                  {showCountdown ? (
                     <Badge
                       variant="outline"
                       className={cn(
-                        "text-[10px] px-1.5 py-0 leading-tight uppercase font-mono tracking-tighter",
-                        isUrgent
-                          ? "text-red-300 border-red-500/60 bg-red-500/10"
-                          : isWarning
-                            ? "text-amber-300 border-amber-500/50 bg-amber-500/10"
-                            : "text-cyan-300 border-cyan-500/40 bg-cyan-500/10",
-                      )}>
-                      {urgencyLabel}
+                        "text-[10px] uppercase tracking-widest",
+                        isCriticalWindow
+                          ? "border-red-500/60 bg-red-500/12 text-red-200"
+                          : isAlertWindow
+                            ? "border-amber-500/60 bg-amber-500/12 text-amber-200"
+                            : "border-cyan-500/45 bg-cyan-500/10 text-cyan-200",
+                      )}
+                    >
+                      {isCriticalWindow ? "Crítico" : isAlertWindow ? "Alerta" : "Estable"}
                     </Badge>
-                  )}
+                  ) : null}
                 </div>
-                <CardTitle className="text-lg font-bold flex items-center gap-2 text-primary uppercase tracking-tight">
-                  <Package className="w-4 h-4 text-primary/60" />
+
+                <CardTitle className="flex items-center gap-2 text-lg font-bold uppercase tracking-tight text-primary">
+                  <Package className="size-4 text-primary/60" aria-hidden="true" />
                   {contract.requiredItemName}
                 </CardTitle>
-                <CardDescription className="text-xs font-mono text-primary/50 uppercase">
+                <CardDescription className="font-mono text-[11px] uppercase tracking-wider text-primary/55">
                   Solicitud de Corporación
                 </CardDescription>
               </CardHeader>
 
-              <CardContent className="space-y-4 flex-grow flex flex-col justify-between">
+              <CardContent className="flex flex-1 flex-col justify-between gap-4">
                 <div className="space-y-2">
-                  <div className="flex justify-between text-xs font-mono uppercase tracking-tighter">
+                  <div className="flex items-center justify-between text-xs font-mono uppercase tracking-wider">
                     <span className="text-primary/60">Progreso</span>
-                    <span
-                      className={cn(
-                        isCompleted ? "text-green-400" : "text-primary",
-                      )}>
-                      {contract.currentQuantity} / {contract.requiredQuantity}
+                    <span className="text-primary">
+                      {progress.delivered} / {progress.required}
                     </span>
                   </div>
-                  {!isCompleted && !isExpired && (
+
+                  <Progress
+                    value={progress.progressPercent}
+                    className={cn(
+                      "h-1.5 border-none bg-primary/12",
+                      state === "ready" && "[&_[data-slot=progress-indicator]]:bg-cyan-400",
+                      state === "delivered" && "[&_[data-slot=progress-indicator]]:bg-emerald-400",
+                      state === "blocked" && "[&_[data-slot=progress-indicator]]:bg-zinc-500",
+                    )}
+                    aria-label={`Progreso del contrato ${contract.requiredItemName}`}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={progress.progressPercent}
+                  />
+
+                  <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
+                    <span>Inventario: {progress.available}</span>
+                    <span className="text-primary/40">•</span>
+                    <span>Restante: {progress.remaining}</span>
+                  </div>
+
+                  {showCountdown ? (
                     <div
                       className={cn(
-                        "flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest",
-                        isUrgent
-                          ? "text-red-300"
-                          : isWarning
-                            ? "text-amber-300"
-                            : "text-cyan-300",
-                      )}>
-                      {isUrgent ? (
-                        <AlertTriangle className="w-3 h-3" aria-hidden="true" />
+                        "flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider",
+                        isCriticalWindow
+                          ? "text-red-200"
+                          : isAlertWindow
+                            ? "text-amber-200"
+                            : "text-cyan-200",
+                      )}
+                    >
+                      {isCriticalWindow ? (
+                        <AlertTriangle className="size-3" aria-hidden="true" />
                       ) : (
-                        <Timer className="w-3 h-3" aria-hidden="true" />
+                        <Timer className="size-3" aria-hidden="true" />
                       )}
                       <span>Vence en {expiresInMinutes} min</span>
                     </div>
+                  ) : null}
+
+                  <p className="text-[11px] leading-relaxed text-zinc-300">{meta.helper}</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="flex items-center gap-1.5 rounded-sm border border-primary/10 bg-primary/5 px-2 py-1.5">
+                    <Coins className="size-3 text-yellow-500" aria-hidden="true" />
+                    <span className="font-mono text-xs font-bold text-yellow-400">+{contract.rewardCC}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 rounded-sm border border-primary/10 bg-primary/5 px-2 py-1.5">
+                    <Zap className="size-3 fill-cyan-500/20 text-cyan-500" aria-hidden="true" />
+                    <span className="font-mono text-xs font-bold text-cyan-400">+{contract.rewardXP}</span>
+                  </div>
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={cn(
+                    "mt-1 h-9 w-full text-xs font-mono uppercase tracking-widest",
+                    state === "ready" && "border-cyan-400/50 bg-cyan-500/12 text-cyan-100 hover:bg-cyan-500/20",
+                    state === "incomplete" && "border-amber-400/40 text-amber-100 hover:bg-amber-500/12",
+                    state === "delivered" && "border-emerald-400/40 text-emerald-200",
+                    state === "blocked" && "border-zinc-600 text-zinc-300",
                   )}
-                  <Progress
-                    value={progress}
-                    className="h-1.5 bg-primary/10 border-none"
-                    // Manual className injection for the indicator usually needs specific tailwind config or custom property
-                    // With Tailwind 4 we can leverage style or data attributes
-                  />
-                </div>
+                  onClick={() => handleDeliver(contract.id, action.quantityToDeliver)}
+                  disabled={isLoading || action.disabled}
+                  aria-label={`Acción de contrato: ${action.label}`}
+                >
+                  {isLoading ? "Procesando…" : action.label}
+                </Button>
 
-                <div className="grid grid-cols-2 gap-2 pt-2">
-                  <div className="flex items-center gap-1.5 px-2 py-1.5 bg-primary/5 border border-primary/10 rounded-sm">
-                    <Coins className="w-3 h-3 text-yellow-500" />
-                    <span className="text-xs font-bold text-yellow-500/90 font-mono">
-                      +{contract.rewardCC}
-                    </span>
+                {state === "delivered" ? (
+                  <div className="mt-1 flex items-center justify-center gap-2 rounded-sm border border-emerald-500/20 bg-emerald-500/10 py-2 text-xs font-mono uppercase text-emerald-300">
+                    <CheckCircle2 className="size-4" aria-hidden="true" />
+                    Contrato cerrado
                   </div>
-                  <div className="flex items-center gap-1.5 px-2 py-1.5 bg-primary/5 border border-primary/10 rounded-sm">
-                    <Zap className="w-3 h-3 text-cyan-500 fill-cyan-500/20" />
-                    <span className="text-xs font-bold text-cyan-400 font-mono">
-                      +{contract.rewardXP}
-                    </span>
-                  </div>
-                </div>
+                ) : null}
 
-                {!isCompleted && !isExpired && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full mt-4 border-primary/30 hover:bg-primary/10 hover:text-primary text-xs uppercase font-mono tracking-widest h-9"
-                    onClick={() =>
-                      handleDeliver(
-                        contract.id,
-                        contract.requiredQuantity - contract.currentQuantity,
-                      )
-                    }
-                    disabled={loadingId === contract.id}>
-                    {loadingId === contract.id
-                      ? "Procesando..."
-                      : "Entregar Materiales"}
-                  </Button>
-                )}
-
-                {isCompleted && (
-                  <div className="flex items-center justify-center gap-2 mt-4 text-green-400 font-mono text-xs uppercase py-2 bg-green-500/10 rounded-sm border border-green-500/20">
-                    <CheckCircle2 className="w-4 h-4" />
-                    Contrato Cerrado
+                {state === "blocked" ? (
+                  <div className="mt-1 flex items-center justify-center gap-2 rounded-sm border border-zinc-600/40 bg-zinc-800/40 py-2 text-xs font-mono uppercase text-zinc-300">
+                    <Lock className="size-4" aria-hidden="true" />
+                    Contrato bloqueado
                   </div>
-                )}
+                ) : null}
               </CardContent>
             </Card>
           );

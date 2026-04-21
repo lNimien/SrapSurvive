@@ -12,7 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import { AlertTriangle, ShieldCheck, Zap } from 'lucide-react';
 import { Button } from '../ui/button';
 import { cn } from '@/lib/utils/cn';
-import { getActivityLine, getExpeditionVisualState } from '@/lib/utils/expedition-ui';
+import { getActivityLine, getExpeditionStateMeta, getExpeditionVisualState } from '@/lib/utils/expedition-ui';
 
 interface ExpeditionPanelProps {
   activeRun: RunStateDTO;
@@ -38,6 +38,7 @@ export function ExpeditionPanel({ activeRun: initialActiveRun, onExtractionResul
   const dangerTrend: 'rising' | 'stable' = visualDanger > (polledRun.dangerLevel ?? 0) ? 'rising' : 'stable';
   const signalNoise = Math.min(100, Math.round(visualDanger * 72 + (polledRun.pendingLoot?.length ?? 0) * 3));
   const visualState = getExpeditionVisualState(visualDanger, isCatastrophe);
+  const visualStateMeta = getExpeditionStateMeta(visualState);
   const activityLine = getActivityLine(visualState, activityTick);
 
   useEffect(() => {
@@ -180,7 +181,7 @@ export function ExpeditionPanel({ activeRun: initialActiveRun, onExtractionResul
                 {activityLine}
               </p>
               <p className="mt-2 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-                Estado visual: {visualState}
+                Estado visual: {visualStateMeta.label}
               </p>
             </div>
           </div>

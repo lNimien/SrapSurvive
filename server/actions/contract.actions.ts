@@ -44,6 +44,7 @@ export async function deliverContractAction(
 
     // 4. Revalidate
     revalidatePath('/dashboard');
+    revalidatePath('/contracts');
     revalidatePath('/inventory');
 
     return { success: true, data: { message: 'Materiales entregados correctamente.' } };
@@ -89,6 +90,7 @@ export async function refreshContractsAction(
     const refreshedContracts = await ContractService.refreshContracts(userId, validated.data.requestId);
 
     revalidatePath('/dashboard');
+    revalidatePath('/contracts');
 
     return {
       success: true,

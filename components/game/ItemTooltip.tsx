@@ -1,4 +1,4 @@
-import { InventoryItemDTO } from '../../types/dto.types';
+import { InventoryItemDTO } from '@/types/dto.types';
 import { Badge } from '@/components/ui/badge';
 import { getPerkLines } from '@/lib/utils/item-perks';
 import { cn } from '@/lib/utils/cn';
@@ -18,60 +18,67 @@ export function ItemTooltip({ item }: ItemTooltipProps) {
   const slotLabel = item.equipmentSlot ? item.equipmentSlot.replaceAll('_', ' ') : 'N/A';
 
   return (
-    <div className="item-tooltip absolute z-50 min-w-[260px] max-w-[320px] rounded border border-zinc-700 bg-zinc-950 p-3 text-zinc-100 shadow-2xl pointer-events-none opacity-0 transition-opacity group-hover:opacity-100 -top-2 left-full ml-2">
-      <div className="mb-2 border-b border-zinc-700 pb-2">
-        <p className="font-bold text-zinc-100 text-sm">{item.displayName}</p>
-        <div className="mt-1 flex items-center gap-1.5">
-          <Badge variant="outline" className={cn('text-[10px] uppercase tracking-widest border', rarityVisuals.textClass)}>
+    <article className="max-h-[min(70vh,28rem)] overflow-y-auto p-4 pr-3 sm:p-5" role="document">
+      <header className="space-y-3 border-b border-zinc-800/90 pb-3">
+        <div className="space-y-1">
+          <p className="break-words font-sans text-base font-bold uppercase tracking-wide text-zinc-100">{item.displayName}</p>
+          <p className="break-words text-xs leading-relaxed text-zinc-400">{item.description || 'Sin descripción.'}</p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Badge
+            variant="outline"
+            className={cn('text-[10px] uppercase tracking-[0.2em] border px-2 py-0.5', rarityVisuals.badgeClass)}
+          >
             {getTierLabel(item.rarity)}
           </Badge>
-          <Badge variant="outline" className="text-[10px] uppercase tracking-widest border-zinc-600 text-zinc-300">
+          <Badge variant="outline" className="border-zinc-700 bg-zinc-900/90 px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] text-zinc-300">
             {itemTypeLabel}
           </Badge>
           {item.isEquipable && (
-            <Badge variant="outline" className="text-[10px] uppercase tracking-widest border-cyan-500/50 text-cyan-300">
+            <Badge variant="outline" className="border-cyan-500/40 bg-cyan-500/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] text-cyan-200">
               {slotLabel}
             </Badge>
           )}
         </div>
-      </div>
+      </header>
 
-      <div className="mb-2 text-xs leading-relaxed text-zinc-300">
-        {item.description || 'Sin descripción.'}
-      </div>
-
-      <div className="mb-2 rounded border border-cyan-500/20 bg-cyan-500/5 px-2 py-1.5 text-[11px] leading-relaxed text-cyan-100">
+      <div className="mt-3 rounded-sm border border-cyan-500/20 bg-cyan-500/8 px-2.5 py-2 text-[11px] leading-relaxed text-cyan-100">
         {explanation}
       </div>
 
-      <div className="grid grid-cols-2 gap-1 text-xs">
-        <span className="text-zinc-400">Valor Base:</span>
-        <span className="text-amber-400">{item.baseValue} CC</span>
-        <span className="text-zinc-400">Cantidad:</span>
-        <span className="text-zinc-100">x{item.quantity}</span>
+      <div className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+        <div className="rounded-sm border border-zinc-800 bg-zinc-900/70 px-2 py-1.5">
+          <p className="text-[10px] uppercase tracking-widest text-zinc-500">Valor Base</p>
+          <p className="mt-1 font-mono text-amber-300 tabular-nums">{item.baseValue} CC</p>
+        </div>
+        <div className="rounded-sm border border-zinc-800 bg-zinc-900/70 px-2 py-1.5">
+          <p className="text-[10px] uppercase tracking-widest text-zinc-500">Stack</p>
+          <p className="mt-1 font-mono text-zinc-100 tabular-nums">x{item.quantity}</p>
+        </div>
       </div>
 
       {stats.length > 0 && (
-        <div className="mt-2 border-t border-zinc-700 pt-2">
-          <p className="text-[10px] uppercase tracking-widest text-cyan-300">Stats</p>
-          <ul className="mt-1 space-y-1 text-[11px] text-zinc-200">
+        <section className="mt-3 border-t border-zinc-800/90 pt-3">
+          <p className="text-[10px] uppercase tracking-[0.2em] text-cyan-300">Stats</p>
+          <ul className="mt-1.5 space-y-1 text-[11px] leading-relaxed text-zinc-200">
             {stats.map((stat) => (
               <li key={stat}>• {stat}</li>
             ))}
           </ul>
-        </div>
+        </section>
       )}
 
       {perks.length > 0 && (
-        <div className="mt-2 border-t border-zinc-700 pt-2">
-          <p className="text-[10px] uppercase tracking-widest text-cyan-300">Perks</p>
-          <ul className="mt-1 space-y-1 text-[11px] text-zinc-300">
+        <section className="mt-3 border-t border-zinc-800/90 pt-3">
+          <p className="text-[10px] uppercase tracking-[0.2em] text-violet-300">Perks</p>
+          <ul className="mt-1.5 space-y-1 text-[11px] leading-relaxed text-zinc-300">
             {perks.map((perk) => (
               <li key={perk}>• {perk}</li>
             ))}
           </ul>
-        </div>
+        </section>
       )}
-    </div>
+    </article>
   );
 }

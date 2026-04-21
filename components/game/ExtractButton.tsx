@@ -2,23 +2,38 @@
 
 import { useTransition } from 'react';
 import { requestExtractionAction } from '../../server/actions/run.actions';
+import { useToast } from '@/hooks/use-toast';
+import { ExtractionResultDTO } from '@/types/dto.types';
 
 interface ExtractButtonProps {
   runId: string;
   isCatastrophe: boolean;
-  onExtractionSuccess: (result: any) => void;
+  onExtractionSuccess: (result: ExtractionResultDTO) => void;
 }
 
 export function ExtractButton({ runId, isCatastrophe, onExtractionSuccess }: ExtractButtonProps) {
+  const { toast } = useToast();
   const [isPending, startTransition] = useTransition();
 
   const handleExtraction = () => {
     startTransition(async () => {
-      const result = await requestExtractionAction({ runId });
-      if (result.success) {
-         onExtractionSuccess(result.data);
-      } else {
-         alert(`Error de Extracción: ${result.error.message}`);
+      try {
+        const result = await requestExtractionAction({ runId });
+        if (result.success) {
+          onExtractionSuccess(result.data);
+        } else {
+          toast({
+            title: 'Extracción rechazada',
+            description: result.error.message,
+            variant: 'destructive',
+          });
+        }
+      } catch {
+        toast({
+          title: 'Error de extracción',
+          description: 'No se pudo procesar la extracción. Reintentá en unos segundos.',
+          variant: 'destructive',
+        });
       }
     });
   };

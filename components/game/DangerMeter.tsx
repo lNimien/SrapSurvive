@@ -1,5 +1,7 @@
 import { Progress } from '../ui/progress';
 import { cn } from '@/lib/utils/cn';
+import { Badge } from '@/components/ui/badge';
+import { getExpeditionStateMeta, getExpeditionVisualState } from '@/lib/utils/expedition-ui';
 
 interface DangerMeterProps {
   dangerLevel: number;
@@ -10,14 +12,16 @@ interface DangerMeterProps {
 export function DangerMeter({ dangerLevel, status, trend }: DangerMeterProps) {
   const percentage = Math.min(Math.max(dangerLevel * 100, 0), 100);
   const isCatastrophe = status === 'catastrophe';
+  const riskState = getExpeditionVisualState(dangerLevel, isCatastrophe);
+  const stateMeta = getExpeditionStateMeta(riskState);
 
-  const statusColor = isCatastrophe 
-    ? 'text-destructive' 
-    : dangerLevel > 0.8 
-      ? 'text-orange-500' 
-      : dangerLevel > 0.5 
-        ? 'text-yellow-500' 
-        : 'text-primary';
+  const statusColor = isCatastrophe
+    ? 'text-destructive'
+    : riskState === 'alert'
+      ? 'text-amber-300'
+      : riskState === 'critical'
+        ? 'text-destructive'
+        : 'text-emerald-300';
 
   const operationalCopy = isCatastrophe
     ? 'Catástrofe activa — extrae inmediatamente'
@@ -28,11 +32,11 @@ export function DangerMeter({ dangerLevel, status, trend }: DangerMeterProps) {
         : 'Amenaza controlada — continúa recolectando';
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" aria-live="polite">
       <div className="flex justify-between items-end">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full animate-pulse ${isCatastrophe ? 'bg-destructive shadow-[0_0_8px_rgba(239,68,68,0.8)]' : 'bg-primary shadow-[0_0_8px_rgba(0,243,255,0.8)]'}`} />
+            <div className={`w-2 h-2 rounded-full animate-pulse ${isCatastrophe ? 'bg-destructive shadow-[0_0_8px_rgba(239,68,68,0.8)]' : riskState === 'alert' ? 'bg-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.8)]' : riskState === 'critical' ? 'bg-destructive shadow-[0_0_8px_rgba(239,68,68,0.8)]' : 'bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.8)]'}`} />
             <h4 className="text-[10px] font-mono text-muted-foreground uppercase tracking-[0.3em]">Ambience_Threat_Level</h4>
           </div>
           <div className={cn(
@@ -47,38 +51,50 @@ export function DangerMeter({ dangerLevel, status, trend }: DangerMeterProps) {
 
         <div className="text-right space-y-1">
           <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-[0.2em]">Operational_Status</p>
-          <div className={`px-2 py-0.5 border text-[10px] font-mono font-bold uppercase tracking-widest ${
-            isCatastrophe 
-              ? 'bg-destructive/20 border-destructive text-destructive' 
-              : 'bg-primary/10 border-primary/30 text-primary'
-          }`}>
-             {status === 'catastrophe' ? '!! CRITICAL !!' : 'NOMINAL_FLOW'}
-          </div>
+          <Badge variant="outline" className={cn('px-2 py-0.5 text-[10px] font-mono font-bold uppercase tracking-widest', stateMeta.badgeClass)}>
+            {isCatastrophe ? 'Crítico' : stateMeta.label}
+          </Badge>
           <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-muted-foreground">
-            Threat trend: {trend === 'rising' ? '▲ Rising' : '■ Stable'}
+            Tendencia: {trend === 'rising' ? '▲ En ascenso' : '■ Estable'}
           </p>
         </div>
       </div>
 
       <div className="relative pt-2">
-        <Progress 
-          value={percentage} 
-          className={`h-3 rounded-none bg-background/50 border border-white/5 motion-reduce:transition-none ${isCatastrophe ? '[&>div]:bg-destructive' : '[&>div]:bg-primary shadow-[0_0_10px_rgba(0,243,255,0.2)]'}`}
+        <Progress
+          value={percentage}
+          className={cn(
+            'h-3 rounded-none border border-white/10 bg-background/60 motion-reduce:transition-none',
+            stateMeta.progressClass,
+            riskState === 'stable' && 'shadow-[0_0_10px_rgba(16,185,129,0.22)]',
+            riskState === 'alert' && 'shadow-[0_0_10px_rgba(245,158,11,0.25)]',
+            riskState === 'critical' && 'shadow-[0_0_12px_rgba(239,68,68,0.3)]',
+          )}
+          aria-label="Nivel de riesgo de expedición"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(percentage)}
         />
-        
-        {/* Decorative Grid markings */}
+
         <div className="absolute top-2 left-0 w-full h-3 flex justify-between px-1 pointer-events-none">
           {[...Array(10)].map((_, i) => (
             <div key={i} className="w-[1px] h-full bg-background/40" />
           ))}
         </div>
+
+        <div className="pointer-events-none absolute inset-y-2 left-[60%] w-px bg-amber-300/60" aria-hidden="true" />
+        <div className="pointer-events-none absolute inset-y-2 left-[85%] w-px bg-destructive/70" aria-hidden="true" />
       </div>
 
-      <div className="flex justify-between text-[8px] font-mono text-muted-foreground uppercase tracking-[0.4em] pt-1 opacity-50">
+      <div className="flex justify-between text-[8px] font-mono text-muted-foreground uppercase tracking-[0.35em] pt-1 opacity-60">
         <span>Min_Safe</span>
         <span>Warning_Threshold</span>
         <span>Critical_Evac</span>
       </div>
+
+      <p className="text-[10px] font-mono uppercase tracking-[0.16em] text-muted-foreground">
+        {stateMeta.guidance}
+      </p>
     </div>
   );
 }

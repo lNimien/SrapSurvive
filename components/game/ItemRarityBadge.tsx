@@ -10,17 +10,19 @@ interface ItemRarityBadgeProps {
 
 export function ItemRarityBadge({ rarity, className }: ItemRarityBadgeProps) {
   const rarityVisuals = getRarityVisuals(rarity);
+  const tierLabel = getTierLabel(rarity);
 
   return (
     <Badge
       variant="outline"
+      aria-label={`Rareza ${tierLabel}`}
       className={cn(
-        'text-[10px] uppercase tracking-widest font-mono px-1.5 py-0 border',
-        rarityVisuals.textClass,
+        'text-[10px] uppercase tracking-[0.2em] font-mono px-2 py-0.5 border',
+        rarityVisuals.badgeClass,
         className,
       )}
     >
-      {getTierLabel(rarity)}
+      {tierLabel}
     </Badge>
   );
 }
