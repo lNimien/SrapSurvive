@@ -434,6 +434,6 @@ That positioning is honest, technically interesting, and differentiates the proj
 
 ## License
 
-Add the license you want before publishing publicly.
+This project is open source under the **MIT License**.
 
-If you plan to open-source the code on GitHub, include a proper `LICENSE` file so usage rights are explicit.
+See the `LICENSE` file for details.
